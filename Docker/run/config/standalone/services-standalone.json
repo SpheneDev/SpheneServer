@@ -31,7 +31,7 @@
         "CdnFullUrl": "http://localhost:6200/",
         "MainServerAddress": "http://mare-server:6000/",
         "MainServerGrpcAddress": "http://mare-server:6005/",
-        "DiscordBotToken": "DISCORD_BOT_TOKEN",
+        "DiscordBotToken": "YOUR_DISCORD_BOT_TOKEN_HERE",
         "DiscordChannelForMessages": "1409832771198910494",
         "DiscordChannelForCommands": "1409832771198910494",
         "DiscordRoleRegistered": "1410272516395630622",
