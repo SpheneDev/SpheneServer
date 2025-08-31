@@ -351,3 +351,10 @@ MigrationBackup/
 
 # docker run data
 Docker/run/data/
+
+#testfiles
+generate_secret_key.ps1
+generate_secret_key.cs
+generate_secret_key.bat
+*.sql
+*.zip
