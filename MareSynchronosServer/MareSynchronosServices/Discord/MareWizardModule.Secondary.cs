@@ -1,4 +1,4 @@
-﻿using Discord.Interactions;
+using Discord.Interactions;
 using Discord;
 using MareSynchronosShared.Data;
 using Microsoft.EntityFrameworkCore;
@@ -21,15 +21,15 @@ public partial class MareWizardModule
         var secondaryUids = await mareDb.Auth.CountAsync(p => p.PrimaryUserUID == primaryUID).ConfigureAwait(false);
         EmbedBuilder eb = new();
         eb.WithColor(Color.Blue);
-        eb.WithTitle("Secondary UID");
-        eb.WithDescription("You can create secondary UIDs here. " + Environment.NewLine + Environment.NewLine
-            + "Secondary UIDs act as completely separate Mare accounts with their own pair list, joined syncshells, UID and so on." + Environment.NewLine
-            + "Use this to create UIDs if you want to use Mare on two separate game instances at once or keep your alts private." + Environment.NewLine + Environment.NewLine
-            + "__Note:__ Creating a Secondary UID is _not_ necessary to use Mare for alts." + Environment.NewLine + Environment.NewLine
-            + $"You currently have {secondaryUids} Secondary UIDs out of a maximum of 20.");
+        eb.WithTitle("Secondary Soul Fragment");
+        eb.WithDescription("You can create secondary soul fragments here. " + Environment.NewLine + Environment.NewLine
+            + "Secondary soul fragments act as completely separate Sphene connections with their own pair list, joined syncshells, UID and so on." + Environment.NewLine
+            + "Use this to create UIDs if you want to use Sphene on two separate game instances at once or keep your alts private." + Environment.NewLine + Environment.NewLine
+            + "__Note:__ Creating a Secondary Soul Fragment is _not_ necessary to use Sphene for alts." + Environment.NewLine + Environment.NewLine
+            + $"You currently have {secondaryUids} Secondary Soul Fragments out of a maximum of 20.");
         ComponentBuilder cb = new();
         AddHome(cb);
-        cb.WithButton("Create Secondary UID", "wizard-secondary-create:" + primaryUID, ButtonStyle.Primary, emote: new Emoji("2️⃣"), disabled: secondaryUids >= 20);
+        cb.WithButton("Create Secondary Soul Fragment", "wizard-secondary-create:" + primaryUID, ButtonStyle.Primary, emote: new Emoji("2️⃣"), disabled: secondaryUids >= 20);
         await ModifyInteraction(eb, cb).ConfigureAwait(false);
     }
 
@@ -42,7 +42,7 @@ public partial class MareWizardModule
 
         using var mareDb = await GetDbContext().ConfigureAwait(false);
         EmbedBuilder eb = new();
-        eb.WithTitle("Secondary UID created");
+        eb.WithTitle("Secondary Soul Fragment created");
         eb.WithColor(Color.Green);
         ComponentBuilder cb = new();
         AddHome(cb);
@@ -81,9 +81,9 @@ public partial class MareWizardModule
 
         await db.SaveChangesAsync().ConfigureAwait(false);
 
-        embed.WithDescription("A secondary UID for you was created, use the information below and add the secret key to the Mare setings in the Service Settings tab.");
+        embed.WithDescription("A secondary soul fragment for you was created, use the information below and add the electrope key to the Sphene settings in the Service Settings tab.");
         embed.AddField("UID", newUser.UID);
-        embed.AddField("Secret Key", computedHash);
+        embed.AddField("Electrope Key", computedHash);
 
         await _botServices.LogToChannel($"{Context.User.Mention} SECONDARY SUCCESS: {newUser.UID}").ConfigureAwait(false);
     }

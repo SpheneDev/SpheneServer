@@ -1,5 +1,5 @@
-﻿using MareSynchronos.API.Dto;
-using MareSynchronos.API.SignalR;
+using Sphene.API.Dto;
+using Sphene.API.SignalR;
 using MareSynchronosServer.Hubs;
 using MareSynchronosShared.Data;
 using MareSynchronosShared.Metrics;

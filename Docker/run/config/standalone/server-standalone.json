@@ -38,13 +38,13 @@
             ""
         ],
         "RedisConnectionString": "redis,password=secretredispassword",
-        "CdnFullUrl": "http://localhost:6200",
+        "CdnFullUrl": "http://mare-files:6200",
         "MaxExistingGroupsByUser": 6,
         "MaxJoinedGroupsByUser": 10,
         "MaxGroupUserCount": 100,
         "PurgeUnusedAccounts": false,
         "PurgeUnusedAccountsPeriodInDays": 14,
-        "ExpectedClientVersion": "0.9.0",
+        "ExpectedClientVersion": "0.0.3",
         "XIVAPIKey": ""
     },
     "AllowedHosts": "*",

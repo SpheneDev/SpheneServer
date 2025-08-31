@@ -1,4 +1,4 @@
-﻿using MareSynchronosShared.Models;
+using MareSynchronosShared.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace MareSynchronosShared.Data;
@@ -57,6 +57,8 @@ public class MareDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Auth>().ToTable("auth");
+        mb.Entity<Auth>().HasOne(a => a.User).WithMany().HasForeignKey(a => a.UserUID).HasConstraintName("fk_auth_users_user_uid");
+        mb.Entity<Auth>().HasOne(a => a.PrimaryUser).WithMany().HasForeignKey(a => a.PrimaryUserUID).HasConstraintName("fk_auth_users_primary_user_uid");
         mb.Entity<User>().ToTable("users");
         mb.Entity<FileCache>().ToTable("file_caches");
         mb.Entity<FileCache>().HasIndex(c => c.UploaderUID);

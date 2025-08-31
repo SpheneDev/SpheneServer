@@ -25,7 +25,7 @@ services:
       - cache:/data
 
   mare-server:
-    image: darkarchon/mare-synchronos-server:latest
+    image: mare-synchronos-server:latest
     restart: on-failure
     ports:
       - 6000:6000/tcp
@@ -48,8 +48,11 @@ services:
       timeout: 1s
 
   mare-auth:
-    image: darkarchon/mare-synchronos-authservice:latest
+    image: mare-synchronos-authservice:latest
     restart: on-failure
+    ports:
+      - 8080:80/tcp
+      - 6150:6150/tcp
     environment:
       DOTNET_USE_POLLING_FILE_WATCHER: 1
     volumes:
@@ -63,13 +66,14 @@ services:
         condition: service_healthy
 
   mare-services:
-    image: darkarchon/mare-synchronos-services:latest
+    image: mare-synchronos-services:latest
     restart: on-failure
     environment:
       MareSynchronos__DiscordBotToken: "${DEV_MARE_DISCORDTOKEN}"
       MareSynchronos__DiscordChannelForMessages: "${DEV_MARE_DISCORDCHANNEL}"
       MareSynchronos__DiscordChannelForReports: "${DEV_MARE_DISCORDCHANNEL}"
       MareSynchronos__DiscordChannelForCommands: "${DEV_MARE_DISCORDCHANNEL}"
+      MareSynchronos__DiscordRoleRegistered: "${DEV_MARE_DISCORDROLE}"
       DOTNET_USE_POLLING_FILE_WATCHER: 1
     volumes:
       - ../config/standalone/services-standalone.json:/opt/MareSynchronosServices/appsettings.json
@@ -82,7 +86,7 @@ services:
         condition: service_healthy
 
   mare-files:
-    image: darkarchon/mare-synchronos-staticfilesserver:latest
+    image: mare-synchronos-staticfilesserver:latest
     ports:
       - 6200:6200/tcp
     restart: on-failure

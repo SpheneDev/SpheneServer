@@ -1,10 +1,10 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using MareSynchronos.API.Data;
-using MareSynchronos.API.Data.Enum;
-using MareSynchronos.API.Data.Extensions;
-using MareSynchronos.API.Dto.User;
+using Sphene.API.Data;
+using Sphene.API.Data.Enum;
+using Sphene.API.Data.Extensions;
+using Sphene.API.Dto.User;
 using MareSynchronosServer.Utils;
 using MareSynchronosShared.Metrics;
 using MareSynchronosShared.Models;

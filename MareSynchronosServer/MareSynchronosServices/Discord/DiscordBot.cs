@@ -184,10 +184,10 @@ internal class DiscordBot : IHostedService
     private async Task GenerateOrUpdateWizardMessage(SocketTextChannel channel, IUserMessage? prevMessage)
     {
         EmbedBuilder eb = new EmbedBuilder();
-        eb.WithTitle("Mare Services Bot Interaction Service");
-        eb.WithDescription("Press \"Start\" to interact with this bot!" + Environment.NewLine + Environment.NewLine
-            + "You can handle all of your Mare account needs in this server through the easy to use interactive bot prompt. Just follow the instructions!");
-        eb.WithThumbnailUrl("https://raw.githubusercontent.com/MareSynchronos/repo/main/MareSynchronos/images/icon.png");
+        eb.WithTitle("Sphene Network Terminal Interface");
+        eb.WithDescription("Press \"Start\" to access the terminal!" + Environment.NewLine + Environment.NewLine
+            + "Welcome to the Sphene Network. Through this interface, you can manage your connection to the electrope network and synchronize with other souls across the realm. Follow the prompts to proceed.");
+        eb.WithThumbnailUrl("https://raw.githubusercontent.com/SpheneDev/repo/main/Sphene/images/icon.png");
         var cb = new ComponentBuilder();
         cb.WithButton("Start", style: ButtonStyle.Primary, customId: "wizard-captcha:true", emote: Emoji.Parse("➡️"));
         if (prevMessage == null)
@@ -427,7 +427,7 @@ internal class DiscordBot : IHostedService
             var onlineUsers = await _connectionMultiplexer.GetServer(endPoint).KeysAsync(pattern: "UID:*").CountAsync().ConfigureAwait(false);
 
             _logger.LogInformation("Users online: " + onlineUsers);
-            await _discordClient.SetActivityAsync(new Game("Mare for " + onlineUsers + " Users")).ConfigureAwait(false);
+            await _discordClient.SetActivityAsync(new Game("Your Registration Hub")).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }

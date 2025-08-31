@@ -5,7 +5,7 @@ VisualStudioVersion = 17.2.32602.215
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MareSynchronosServer", "MareSynchronosServer\MareSynchronosServer.csproj", "{029CA97F-E0BA-4172-A191-EA21FB61AD0F}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MareSynchronos.API", "..\MareAPI\MareSynchronosAPI\MareSynchronos.API.csproj", "{326BFB1B-5571-47A6-8513-1FFDB32D53B0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sphene.API", "..\SpheneAPI\SpheneAPI\Sphene.API.csproj", "{326BFB1B-5571-47A6-8513-1FFDB32D53B0}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MareSynchronosServerTest", "MareSynchronosServerTest\MareSynchronosServerTest.csproj", "{25A82A2A-35C2-4EE0-A0E8-DFDD77978DDA}"
 EndProject

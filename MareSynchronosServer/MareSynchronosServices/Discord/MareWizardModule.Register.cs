@@ -1,4 +1,4 @@
-﻿using Discord.Interactions;
+using Discord.Interactions;
 using Discord;
 using MareSynchronosShared.Data;
 using Microsoft.EntityFrameworkCore;
@@ -22,15 +22,15 @@ public partial class MareWizardModule
 
         EmbedBuilder eb = new();
         eb.WithColor(Color.Blue);
-        eb.WithTitle("Start Registration");
-        eb.WithDescription("Here you can start the registration process with the Mare Synchronos server of this Discord." + Environment.NewLine + Environment.NewLine
+        eb.WithTitle("Initialize Soul Connection");
+        eb.WithDescription("Here you can begin the soul synchronization process with the Sphene Network." + Environment.NewLine + Environment.NewLine
             + "- Have your Lodestone URL ready (i.e. https://eu.finalfantasyxiv.com/lodestone/character/XXXXXXXXX)" + Environment.NewLine
-            + "  - The registration requires you to modify your Lodestone profile with a generated code for verification" + Environment.NewLine
-            + "- Do not use this on mobile because you will need to be able to copy the generated secret key" + Environment.NewLine
-            + "# Follow the bot instructions precisely. Slow down and read.");
+            + "  - Soul binding requires you to modify your Lodestone profile with a generated verification sequence" + Environment.NewLine
+            + "- Do not use this on mobile because you will need to be able to copy the generated electrope key" + Environment.NewLine
+            + "# Follow the terminal instructions precisely. Slow down and read.");
         ComponentBuilder cb = new();
         AddHome(cb);
-        cb.WithButton("Start Registration", "wizard-register-start", ButtonStyle.Primary, emote: new Emoji("🌒"));
+        cb.WithButton("Initialize Connection", "wizard-register-start", ButtonStyle.Primary, emote: new Emoji("🛜"));
         await ModifyInteraction(eb, cb).ConfigureAwait(false);
     }
 
@@ -86,9 +86,9 @@ public partial class MareWizardModule
         eb.WithColor(Color.Purple);
         cb.WithButton("Cancel", "wizard-register", ButtonStyle.Secondary, emote: new Emoji("❌"));
         cb.WithButton("Check", "wizard-register-verify-check:" + verificationCode, ButtonStyle.Primary, emote: new Emoji("❓"));
-        eb.WithTitle("Verification Pending");
-        eb.WithDescription("Please wait until the bot verifies your registration." + Environment.NewLine
-            + "Press \"Check\" to check if the verification has been already processed" + Environment.NewLine + Environment.NewLine
+        eb.WithTitle("Soul Resonance Analysis");
+        eb.WithDescription("Please wait while the network analyzes your soul signature." + Environment.NewLine
+            + "Press \"Check\" to verify if the resonance analysis has been completed" + Environment.NewLine + Environment.NewLine
             + "__This will not advance automatically, you need to press \"Check\".__");
         await ModifyInteraction(eb, cb).ConfigureAwait(false);
     }
@@ -110,7 +110,7 @@ public partial class MareWizardModule
             if (stillEnqueued)
             {
                 eb.WithColor(Color.Gold);
-                eb.WithTitle("Your verification is still pending");
+                eb.WithTitle("Soul resonance analysis in progress");
                 eb.WithDescription("Please try again and click Check in a few seconds");
                 cb.WithButton("Cancel", "wizard-register", ButtonStyle.Secondary, emote: new Emoji("❌"));
                 cb.WithButton("Check", "wizard-register-verify-check:" + verificationCode, ButtonStyle.Primary, emote: new Emoji("❓"));
@@ -118,8 +118,8 @@ public partial class MareWizardModule
             else
             {
                 eb.WithColor(Color.Red);
-                eb.WithTitle("Something went wrong");
-                eb.WithDescription("Your verification was processed but did not arrive properly. Please try to start the registration from the start.");
+                eb.WithTitle("Network synchronization error");
+                eb.WithDescription("Your soul analysis was processed but the connection was disrupted. Please reinitialize the soul binding process.");
                 cb.WithButton("Restart", "wizard-register", ButtonStyle.Primary, emote: new Emoji("🔁"));
             }
         }
@@ -130,36 +130,36 @@ public partial class MareWizardModule
                 eb.WithColor(Color.Green);
                 using var db = await GetDbContext().ConfigureAwait(false);
                 var (uid, key) = await HandleAddUser(db).ConfigureAwait(false);
-                eb.WithTitle($"Registration successful, your UID: {uid}");
-                eb.WithDescription("This is your private secret key. Do not share this private secret key with anyone. **If you lose it, it is irrevocably lost.**"
+                eb.WithTitle($"Soul synchronization complete, your UID: {uid}");
+                eb.WithDescription("This is your private electrope key. Do not share this electrope key with anyone. **If you lose it, it is irrevocably lost.**"
                                              + Environment.NewLine + Environment.NewLine
-                                             + "**__NOTE: Secret keys are considered legacy. Using the suggested OAuth2 authentication in Mare, you do not need to use this Secret Key.__**"
+                                             + "**__NOTE: Electrope keys are considered legacy. Using the suggested OAuth2 authentication in Sphene, you do not need to use this Electrope Key.__**"
                                              + Environment.NewLine + Environment.NewLine
                                              + $"||**`{key}`**||"
                                              + Environment.NewLine + Environment.NewLine
-                                             + "If you want to continue using legacy authentication, enter this key in Mare Synchronos and hit save to connect to the service."
+                                             + "If you want to continue using legacy authentication, enter this key in Sphene Synchronos and hit save to connect to the network."
                                              + Environment.NewLine
-                                             + "__NOTE: The Secret Key only contains the letters ABCDEF and numbers 0 - 9.__"
+                                             + "__NOTE: The Electrope Key only contains the letters ABCDEF and numbers 0 - 9.__"
                                              + Environment.NewLine
                                              + "You should connect as soon as possible to not get caught by the automatic cleanup process."
                                              + Environment.NewLine
-                                             + "Have fun.");
+                                             + "May your soul resonate with others.");
                 AddHome(cb);
                 registerSuccess = true;
             }
             else
             {
                 eb.WithColor(Color.Gold);
-                eb.WithTitle("Failed to verify registration");
-                eb.WithDescription("The bot was not able to find the required verification code on your Lodestone profile."
+                eb.WithTitle("Soul resonance verification failed");
+                eb.WithDescription("The network was unable to detect the required verification sequence on your Lodestone profile."
                     + Environment.NewLine + Environment.NewLine
-                    + "Please restart your verification process, make sure to save your profile _twice_ for it to be properly saved."
+                    + "Please restart your soul binding process, make sure to save your profile _twice_ for it to be properly synchronized."
                     + Environment.NewLine + Environment.NewLine
                     + "If this link does not lead to your profile edit page, you __need__ to configure the privacy settings first: https://na.finalfantasyxiv.com/lodestone/my/setting/profile/"
                     + Environment.NewLine + Environment.NewLine
-                    + "**Make sure your profile is set to public (All Users) for your character. The bot cannot read profiles with privacy settings set to \"logged in\" or \"private\".**"
+                    + "**Make sure your profile is set to public (All Users) for your character. The network cannot read profiles with privacy settings set to \"logged in\" or \"private\".**"
                     + Environment.NewLine + Environment.NewLine
-                    + "## You __need__ to enter following the code this bot provided onto your Lodestone in the character profile:"
+                    + "## You __need__ to enter the following verification sequence this terminal provided onto your Lodestone in the character profile:"
                     + Environment.NewLine + Environment.NewLine
                     + "**`" + verificationCode + "`**");
                 cb.WithButton("Cancel", "wizard-register", emote: new Emoji("❌"));
@@ -211,9 +211,9 @@ public partial class MareWizardModule
                               + Environment.NewLine + Environment.NewLine
                               + $"**`{lodestoneAuth}`**"
                               + Environment.NewLine + Environment.NewLine
-                              + $"**! THIS IS NOT THE KEY YOU HAVE TO ENTER IN MARE !**"
+                              + $"**! THIS IS NOT THE KEY YOU HAVE TO ENTER IN SPHENE !**"
                               + Environment.NewLine + Environment.NewLine
-                              + "Once added and saved, use the button below to Verify and finish registration and receive a secret key to use for Mare Synchronos."
+                              + "Once added and saved, use the button below to Verify and finish registration and receive a secret key to use for Sphene."
                               + Environment.NewLine
                               + "__You can delete the entry from your profile after verification.__"
                               + Environment.NewLine + Environment.NewLine
@@ -283,11 +283,17 @@ public partial class MareWizardModule
 
         user.LastLoggedIn = DateTime.UtcNow;
 
-        var computedHash = StringUtils.Sha256String(StringUtils.GenerateRandomString(64) + DateTime.UtcNow.ToString());
-        string hashedKey = StringUtils.Sha256String(computedHash);
+        // Generate the original secret key that will be given to the user
+        var originalSecretKeyTime = StringUtils.GenerateRandomString(64) + DateTime.UtcNow.ToString();
+        // Generate the original secret key that will be given to the user
+        var originalSecretKey = StringUtils.Sha256String(originalSecretKeyTime);
+        // Hash the secret key once (this is what the client will send after hashing)
+        var clientHashedKey = StringUtils.Sha256String(originalSecretKey);
+        // Hash the client-hashed key again for database storage
+        string databaseHashedKey = StringUtils.Sha256String(clientHashedKey);
         var auth = new Auth()
         {
-            HashedKey = hashedKey,
+            HashedKey = databaseHashedKey,
             User = user,
         };
 
@@ -300,12 +306,12 @@ public partial class MareWizardModule
 
         await db.SaveChangesAsync().ConfigureAwait(false);
 
-        _botServices.Logger.LogInformation("User registered: {userUID}:{hashedKey}", user.UID, hashedKey);
+        _botServices.Logger.LogInformation("User registered: {userUID}:{hashedKey}", user.UID, databaseHashedKey);
 
         await _botServices.LogToChannel($"{Context.User.Mention} REGISTER COMPLETE: => {user.UID}").ConfigureAwait(false);
 
         _botServices.DiscordVerifiedUsers.Remove(Context.User.Id, out _);
 
-        return (user.UID, computedHash);
+        return (user.UID, originalSecretKey);
     }
 }

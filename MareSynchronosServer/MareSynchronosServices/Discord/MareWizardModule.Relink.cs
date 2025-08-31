@@ -17,15 +17,15 @@ public partial class MareWizardModule
         _logger.LogInformation("{method}:{userId}", nameof(ComponentRelink), Context.Interaction.User.Id);
 
         EmbedBuilder eb = new();
-        eb.WithTitle("Relink");
+        eb.WithTitle("Soul Reconnection");
         eb.WithColor(Color.Blue);
-        eb.WithDescription("Use this in case you already have a registered Mare account, but lost access to your previous Discord account." + Environment.NewLine + Environment.NewLine
+        eb.WithDescription("Use this in case you already have a registered Sphene soul connection, but lost access to your previous Discord account." + Environment.NewLine + Environment.NewLine
             + "- Have your original registered Lodestone URL ready (i.e. https://eu.finalfantasyxiv.com/lodestone/character/XXXXXXXXX)" + Environment.NewLine
-            + "  - The relink process requires you to modify your Lodestone profile with a generated code for verification" + Environment.NewLine
-            + "- Do not use this on mobile because you will need to be able to copy the generated secret key");
+            + "  - The reconnection process requires you to modify your Lodestone profile with a generated code for verification" + Environment.NewLine
+            + "- Do not use this on mobile because you will need to be able to copy the generated electrope key");
         ComponentBuilder cb = new();
         AddHome(cb);
-        cb.WithButton("Start Relink", "wizard-relink-start", ButtonStyle.Primary, emote: new Emoji("🔗"));
+        cb.WithButton("Start Soul Reconnection", "wizard-relink-start", ButtonStyle.Primary, emote: new Emoji("🔗"));
         await ModifyInteraction(eb, cb).ConfigureAwait(false);
     }
 
@@ -77,8 +77,8 @@ public partial class MareWizardModule
         eb.WithColor(Color.Purple);
         cb.WithButton("Cancel", "wizard-relink", ButtonStyle.Secondary, emote: new Emoji("❌"));
         cb.WithButton("Check", "wizard-relink-verify-check:" + verificationCode + "," + uid, ButtonStyle.Primary, emote: new Emoji("❓"));
-        eb.WithTitle("Relink Verification Pending");
-        eb.WithDescription("Please wait until the bot verifies your registration." + Environment.NewLine
+        eb.WithTitle("Soul Reconnection Verification Pending");
+        eb.WithDescription("Please wait until the bot verifies your soul registration." + Environment.NewLine
             + "Press \"Check\" to check if the verification has been already processed" + Environment.NewLine + Environment.NewLine
             + "__This will not advance automatically, you need to press \"Check\".__");
         await ModifyInteraction(eb, cb).ConfigureAwait(false);
@@ -101,7 +101,7 @@ public partial class MareWizardModule
             if (stillEnqueued)
             {
                 eb.WithColor(Color.Gold);
-                eb.WithTitle("Your relink verification is still pending");
+                eb.WithTitle("Your soul reconnection verification is still pending");
                 eb.WithDescription("Please try again and click Check in a few seconds");
                 cb.WithButton("Cancel", "wizard-relink", ButtonStyle.Secondary, emote: new Emoji("❌"));
                 cb.WithButton("Check", "wizard-relink-verify-check:" + verificationCode + "," + uid, ButtonStyle.Primary, emote: new Emoji("❓"));
@@ -110,7 +110,7 @@ public partial class MareWizardModule
             {
                 eb.WithColor(Color.Red);
                 eb.WithTitle("Something went wrong");
-                eb.WithDescription("Your relink verification was processed but did not arrive properly. Please try to start the relink process from the start.");
+                eb.WithDescription("Your soul reconnection verification was processed but did not arrive properly. Please try to start the reconnection process from the start.");
                 cb.WithButton("Restart", "wizard-relink", ButtonStyle.Primary, emote: new Emoji("🔁"));
             }
         }
@@ -121,14 +121,14 @@ public partial class MareWizardModule
                 eb.WithColor(Color.Green);
                 using var db = await GetDbContext().ConfigureAwait(false);
                 var (_, key) = await HandleRelinkUser(db, uid).ConfigureAwait(false);
-                eb.WithTitle($"Relink successful, your UID is again: {uid}");
-                eb.WithDescription("This is your private secret key. Do not share this private secret key with anyone. **If you lose it, it is irrevocably lost.**"
+                eb.WithTitle($"Soul reconnection successful, your UID is again: {uid}");
+                eb.WithDescription("This is your private electrope key. Do not share this private electrope key with anyone. **If you lose it, it is irrevocably lost.**"
                                              + Environment.NewLine + Environment.NewLine
                                              + $"||**`{key}`**||"
                                              + Environment.NewLine + Environment.NewLine
-                                             + "Enter this key in Mare Synchronos and hit save to connect to the service."
+                                             + "Enter this key in Sphene and hit save to connect to the service."
                                              + Environment.NewLine + Environment.NewLine
-                                             + "NOTE: If you are using OAuth2, you do not require to use this secret key."
+                                             + "NOTE: If you are using OAuth2, you do not require to use this electrope key."
                                              + Environment.NewLine
                                              + "Have fun.");
                 AddHome(cb);
@@ -138,9 +138,9 @@ public partial class MareWizardModule
             else
             {
                 eb.WithColor(Color.Gold);
-                eb.WithTitle("Failed to verify relink");
+                eb.WithTitle("Failed to verify soul reconnection");
                 eb.WithDescription("The bot was not able to find the required verification code on your Lodestone profile." + Environment.NewLine + Environment.NewLine
-                    + "Please restart your relink process, make sure to save your profile _twice_ for it to be properly saved." + Environment.NewLine + Environment.NewLine
+                    + "Please restart your soul reconnection process, make sure to save your profile _twice_ for it to be properly saved." + Environment.NewLine + Environment.NewLine
                     + "**Make sure your profile is set to public (All Users) for your character. The bot cannot read profiles with privacy settings set to \"logged in\" or \"private\".**" + Environment.NewLine + Environment.NewLine
                     + "The code the bot is looking for is" + Environment.NewLine + Environment.NewLine
                     + "**`" + verificationCode + "`**");
@@ -191,16 +191,16 @@ public partial class MareWizardModule
 
         string lodestoneAuth = await GenerateLodestoneAuth(Context.User.Id, hashedLodestoneId, db).ConfigureAwait(false);
         // check if lodestone id is already in db
-        embed.WithTitle("Authorize your character for relinking");
+        embed.WithTitle("Authorize your character for soul reconnection");
         embed.WithDescription("Add following key to your character profile at https://na.finalfantasyxiv.com/lodestone/my/setting/profile/"
                               + Environment.NewLine + Environment.NewLine
                               + $"**`{lodestoneAuth}`**"
                               + Environment.NewLine + Environment.NewLine
-                              + $"**! THIS IS NOT THE KEY YOU HAVE TO ENTER IN MARE !**"
+                              + $"**! THIS IS NOT THE ELECTROPE KEY YOU HAVE TO ENTER IN SPHENE !**"
                               + Environment.NewLine
                               + "__You can delete the entry from your profile after verification.__"
                               + Environment.NewLine + Environment.NewLine
-                              + "The verification will expire in approximately 15 minutes. If you fail to verify the relink will be invalidated and you have to relink again.");
+                              + "The verification will expire in approximately 15 minutes. If you fail to verify the soul reconnection will be invalidated and you have to reconnect again.");
         _botServices.DiscordRelinkLodestoneMapping[Context.User.Id] = lodestoneId.ToString();
 
         return (true, lodestoneAuth, expectedUser.User.UID);

@@ -17,7 +17,7 @@ using StackExchange.Redis;
 using StackExchange.Redis.Extensions.Core.Configuration;
 using System.Net;
 using StackExchange.Redis.Extensions.System.Text.Json;
-using MareSynchronos.API.SignalR;
+using Sphene.API.SignalR;
 using MessagePack;
 using MessagePack.Resolvers;
 using Microsoft.AspNetCore.Mvc.Controllers;

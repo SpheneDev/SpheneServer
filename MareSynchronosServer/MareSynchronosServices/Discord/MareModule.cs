@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
 using MareSynchronosShared.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +7,7 @@ using MareSynchronosShared.Models;
 using MareSynchronosShared.Utils;
 using MareSynchronosShared.Services;
 using StackExchange.Redis;
-using MareSynchronos.API.Data.Enum;
+using Sphene.API.Data.Enum;
 using MareSynchronosShared.Utils.Configuration;
 
 namespace MareSynchronosServices.Discord;
@@ -122,7 +122,7 @@ public class MareModule : InteractionModuleBase
                     };
 
                     EmbedBuilder eb = new();
-                    eb.WithTitle(messageType + " server message");
+                    eb.WithTitle(messageType + " network transmission");
                     eb.WithColor(embedColor);
                     eb.WithDescription(message);
 
@@ -237,8 +237,8 @@ public class MareModule : InteractionModuleBase
             dbUser = (await db.Auth.Include(u => u.User).SingleOrDefaultAsync(u => u.PrimaryUserUID == dbUser.UID && u.UserUID == secondaryUserUid))?.User;
             if (dbUser == null)
             {
-                eb.WithTitle("No such secondary UID");
-                eb.WithDescription($"A secondary UID {secondaryUserUid} was not found attached to your primary UID {primaryUser.User.UID}.");
+                eb.WithTitle("No such secondary soul fragment");
+                eb.WithDescription($"A secondary soul fragment {secondaryUserUid} was not found attached to your primary soul {primaryUser.User.UID}.");
                 return eb;
             }
         }
@@ -248,13 +248,13 @@ public class MareModule : InteractionModuleBase
         var groupsJoined = await db.GroupPairs.Where(g => g.GroupUserUID == dbUser.UID).ToListAsync().ConfigureAwait(false);
         var identity = await _connectionMultiplexer.GetDatabase().StringGetAsync("UID:" + dbUser.UID).ConfigureAwait(false);
 
-        eb.WithTitle("User Information");
-        eb.WithDescription("This is the user information for Discord User <@" + userToCheckForDiscordId + ">" + Environment.NewLine + Environment.NewLine
-            + "If you want to verify your secret key is valid, go to https://emn178.github.io/online-tools/sha256.html and copy your secret key into there and compare it to the Hashed Secret Key provided below.");
+        eb.WithTitle("Soul Resonance Profile");
+        eb.WithDescription("This is the soul resonance profile for Discord User <@" + userToCheckForDiscordId + ">" + Environment.NewLine + Environment.NewLine
+            + "If you want to verify your electrope key is valid, go to https://emn178.github.io/online-tools/sha256.html and copy your electrope key into there and compare it to the Hashed Electrope Key provided below.");
         eb.AddField("UID", dbUser.UID);
         if (!string.IsNullOrEmpty(dbUser.Alias))
         {
-            eb.AddField("Vanity UID", dbUser.Alias);
+            eb.AddField("Soul Resonance Identifier", dbUser.Alias);
         }
         if (showForSecondaryUser)
         {
@@ -265,12 +265,12 @@ public class MareModule : InteractionModuleBase
             var secondaryUIDs = await db.Auth.Where(p => p.PrimaryUserUID == dbUser.UID).Select(p => p.UserUID).ToListAsync();
             if (secondaryUIDs.Any())
             {
-                eb.AddField("Secondary UIDs", string.Join(Environment.NewLine, secondaryUIDs));
+                eb.AddField("Secondary Soul Fragments", string.Join(Environment.NewLine, secondaryUIDs));
             }
         }
         eb.AddField("Last Online (UTC)", dbUser.LastLoggedIn.ToString("U"));
         eb.AddField("Currently online ", !string.IsNullOrEmpty(identity));
-        eb.AddField("Hashed Secret Key", auth.HashedKey);
+        eb.AddField("Hashed Electrope Key", auth.HashedKey);
         eb.AddField("Joined Syncshells", groupsJoined.Count);
         eb.AddField("Owned Syncshells", groups.Count);
         foreach (var group in groups)

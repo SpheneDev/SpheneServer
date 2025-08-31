@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
 
 namespace MareSynchronosServices.Discord;
@@ -7,9 +7,9 @@ namespace MareSynchronosServices.Discord;
 
 public class LodestoneModal : IModal
 {
-    public string Title => "Verify with Lodestone";
+    public string Title => "Soul Resonance Verification";
 
-    [InputLabel("Enter the Lodestone URL of your Character")]
+    [InputLabel("Enter the Lodestone URL of your Soul's Avatar")]
     [ModalTextInput("lodestone_url", TextInputStyle.Short, "https://*.finalfantasyxiv.com/lodestone/character/<CHARACTERID>/")]
     public string LodestoneUrl { get; set; }
 }

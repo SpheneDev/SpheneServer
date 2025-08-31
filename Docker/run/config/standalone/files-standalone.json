@@ -4,12 +4,13 @@
     },
     "Logging": {
         "LogLevel": {
-            "Default": "Warning",
-            "Microsoft": "Warning",
+            "Default": "Information",
+            "Microsoft": "Information",
             "Microsoft.Hosting.Lifetime": "Information",
-            "MareSynchronosStaticFilesServer": "Debug",
-            "MareSynchronosShared": "Debug",
-            "System.IO": "Information",
+            "MareSynchronosStaticFilesServer": "Information",
+            "MareSynchronosStaticFilesServer.Services.RequestQueueService": "Warning",
+            "MareSynchronosShared": "Information",
+            "System.IO": "Information"
         },
         "File": {
             "BasePath": "logs",
@@ -38,7 +39,8 @@
         "MainFileServerAddress": "",
         "Jwt": "teststringteststringteststringteststringteststringteststringteststringteststringteststringteststring",
         "UseColdStorage": false,
-        "IsDistributionNode": true
+        "IsDistributionNode": true,
+        "CdnFullUrl": "http://127.0.0.1:6200/"
     },
     "AllowedHosts": "*",
     "Kestrel": {

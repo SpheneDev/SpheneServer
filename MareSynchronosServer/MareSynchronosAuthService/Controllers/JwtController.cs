@@ -1,4 +1,4 @@
-﻿using MareSynchronos.API.Routes;
+using Sphene.API.Routes;
 using MareSynchronosAuthService.Services;
 using MareSynchronosShared;
 using MareSynchronosShared.Data;
@@ -76,7 +76,8 @@ public class JwtController : AuthControllerBase
 
             var ip = HttpAccessor.GetIpAddress();
 
-            var authResult = await SecretKeyAuthenticatorService.AuthorizeAsync(ip, auth);
+            var hashedAuth = StringUtils.Sha256String(auth);
+            var authResult = await SecretKeyAuthenticatorService.AuthorizeAsync(ip, hashedAuth);
 
             return await GenericAuthResponse(dbContext, charaIdent, authResult);
         }

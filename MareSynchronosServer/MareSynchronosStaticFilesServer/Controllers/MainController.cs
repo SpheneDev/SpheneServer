@@ -1,4 +1,4 @@
-﻿using MareSynchronos.API.Routes;
+using Sphene.API.Routes;
 using MareSynchronosShared.Utils.Configuration;
 using MareSynchronosStaticFilesServer.Services;
 using Microsoft.AspNetCore.Authorization;

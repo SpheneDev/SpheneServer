@@ -1,7 +1,7 @@
-﻿using K4os.Compression.LZ4.Legacy;
-using MareSynchronos.API.Dto.Files;
-using MareSynchronos.API.Routes;
-using MareSynchronos.API.SignalR;
+using K4os.Compression.LZ4.Legacy;
+using Sphene.API.Dto.Files;
+using Sphene.API.Routes;
+using Sphene.API.SignalR;
 using MareSynchronosServer.Hubs;
 using MareSynchronosShared.Data;
 using MareSynchronosShared.Metrics;
@@ -124,7 +124,7 @@ public class ServerFilesController : ControllerBase
     public async Task<IActionResult> GetDownloadServers()
     {
         var allFileShards = _shardRegistrationService.GetConfigurationsByContinent(Continent);
-        return Ok(JsonSerializer.Serialize(allFileShards.SelectMany(t => t.RegionUris.Select(v => v.Value.ToString()))));
+        return Ok(JsonSerializer.Serialize(allFileShards.Where(t => t.RegionUris != null).SelectMany(t => t.RegionUris.Where(v => v.Value != null).Select(v => v.Value.ToString()))));
     }
 
     [HttpPost(MareFiles.ServerFiles_FilesSend)]
@@ -164,7 +164,7 @@ public class ServerFilesController : ControllerBase
 
         if (notCoveredFiles.Any(p => !p.Value.IsForbidden))
         {
-            await _hubContext.Clients.Users(filesSendDto.UIDs).SendAsync(nameof(IMareHub.Client_UserReceiveUploadStatus), new MareSynchronos.API.Dto.User.UserDto(new(MareUser)))
+            await _hubContext.Clients.Users(filesSendDto.UIDs).SendAsync(nameof(IMareHub.Client_UserReceiveUploadStatus), new Sphene.API.Dto.User.UserDto(new(MareUser)))
                 .ConfigureAwait(false);
         }
 

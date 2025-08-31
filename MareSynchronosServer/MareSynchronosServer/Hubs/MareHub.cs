@@ -1,7 +1,7 @@
-﻿using MareSynchronos.API.Data;
-using MareSynchronos.API.Data.Enum;
-using MareSynchronos.API.Dto;
-using MareSynchronos.API.SignalR;
+using Sphene.API.Data;
+using Sphene.API.Data.Enum;
+using Sphene.API.Dto;
+using Sphene.API.SignalR;
 using MareSynchronosServer.Services;
 using MareSynchronosServer.Utils;
 using MareSynchronosShared;
@@ -80,6 +80,7 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
     public async Task<ConnectionDto> GetConnectionDto()
     {
         _logger.LogCallInfo();
+        _logger.LogCallWarning(MareHubLogger.Args("[DEBUG] FileServerAddress value: " + (_fileServerAddress?.ToString() ?? "NULL")));
 
         _mareMetrics.IncCounter(MetricsAPI.CounterInitializedConnections);
 
@@ -88,7 +89,7 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
         var dbUser = await DbContext.Users.SingleAsync(f => f.UID == UserUID).ConfigureAwait(false);
         dbUser.LastLoggedIn = DateTime.UtcNow;
 
-        await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Information, "Welcome to Mare Synchronos \"" + _shardName + "\", Current Online Users: " + _systemInfoService.SystemInfoDto.OnlineUsers).ConfigureAwait(false);
+        await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Information, "Welcome to Sphene Network.").ConfigureAwait(false);
 
         var defaultPermissions = await DbContext.UserDefaultPreferredPermissions.SingleOrDefaultAsync(u => u.UserUID == UserUID).ConfigureAwait(false);
         if (defaultPermissions == null)
@@ -158,6 +159,7 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
                 await _onlineSyncedPairCacheService.InitPlayer(UserUID).ConfigureAwait(false);
                 await UpdateUserOnRedis().ConfigureAwait(false);
                 _userConnections[UserUID] = Context.ConnectionId;
+                await SendOnlineToAllPairedUsers().ConfigureAwait(false);
             }
             catch
             {

@@ -1,4 +1,4 @@
-﻿using Discord.Interactions;
+using Discord.Interactions;
 using Discord;
 using MareSynchronosShared.Data;
 using MareSynchronosShared.Models;
@@ -19,14 +19,14 @@ public partial class MareWizardModule
         using var mareDb = await GetDbContext().ConfigureAwait(false);
         EmbedBuilder eb = new();
         eb.WithColor(Color.Blue);
-        eb.WithTitle("Recover");
-        eb.WithDescription("In case you have lost your secret key you can recover it here." + Environment.NewLine + Environment.NewLine
-            + "## ⚠️ **Once you recover your key, the previously used key will be invalidated. If you use Mare on multiple devices you will have to update the key everywhere you use it.** ⚠️" + Environment.NewLine + Environment.NewLine
-            + "Use the selection below to select the user account you want to recover." + Environment.NewLine + Environment.NewLine
-            + "- 1️⃣ is your primary account/UID" + Environment.NewLine
-            + "- 2️⃣ are all your secondary accounts/UIDs" + Environment.NewLine
-            + "If you are using Vanity UIDs the original UID is displayed in the second line of the account selection." + Environment.NewLine
-            + "# Note: instead of recovery and handling secret keys the switch to OAuth2 authentication is strongly suggested.");
+        eb.WithTitle("Electrope Key Recovery");
+        eb.WithDescription("In case you have lost your electrope key you can recover it here." + Environment.NewLine + Environment.NewLine
+            + "## ⚠️ **Once you recover your key, the previously used key will be invalidated. If you use Sphene on multiple devices you will have to update the key everywhere you use it.** ⚠️" + Environment.NewLine + Environment.NewLine
+            + "Use the selection below to select the soul connection you want to recover." + Environment.NewLine + Environment.NewLine
+            + "- 1️⃣ is your primary soul/UID" + Environment.NewLine
+            + "- 2️⃣ are all your secondary soul fragments/UIDs" + Environment.NewLine
+            + "If you are using Vanity UIDs the original UID is displayed in the second line of the soul selection." + Environment.NewLine
+            + "# Note: instead of recovery and handling electrope keys the switch to OAuth2 authentication is strongly suggested.");
         ComponentBuilder cb = new();
         await AddUserSelection(mareDb, cb, "wizard-recover-select").ConfigureAwait(false);
         AddHome(cb);
@@ -70,16 +70,16 @@ public partial class MareWizardModule
 
         await db.Auth.AddAsync(auth).ConfigureAwait(false);
 
-        embed.WithTitle($"Recovery for {uid} complete");
-        embed.WithDescription("This is your new private secret key. Do not share this private secret key with anyone. **If you lose it, it is irrevocably lost.**"
+        embed.WithTitle($"Soul recovery for {uid} complete");
+        embed.WithDescription("This is your new private electrope key. Do not share this electrope key with anyone. **If you lose it, it is irrevocably lost.**"
                               + Environment.NewLine + Environment.NewLine
-                              + "**__NOTE: Secret keys are considered legacy authentication. If you are using the suggested OAuth2 authentication, you do not need to use the Secret Key or recover ever again.__**"
+                              + "**__NOTE: Electrope keys are considered legacy authentication. If you are using the suggested OAuth2 authentication, you do not need to use the Electrope Key or recover ever again.__**"
                               + Environment.NewLine + Environment.NewLine
                               + $"||**`{computedHash}`**||"
                               + Environment.NewLine
-                              + "__NOTE: The Secret Key only contains the letters ABCDEF and numbers 0 - 9.__"
+                              + "__NOTE: The Electrope Key only contains the letters ABCDEF and numbers 0 - 9.__"
                               + Environment.NewLine + Environment.NewLine
-                              + "Enter this key in the Mare Synchronos Service Settings and reconnect to the service.");
+                              + "Enter this key in the Sphene Synchronos Service Settings and reconnect to the network.");
 
         await db.Auth.AddAsync(auth).ConfigureAwait(false);
         await db.SaveChangesAsync().ConfigureAwait(false);

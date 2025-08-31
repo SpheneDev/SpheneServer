@@ -1,5 +1,5 @@
-﻿using Microsoft.AspNetCore.SignalR;
-using MareSynchronos.API.SignalR;
+using Microsoft.AspNetCore.SignalR;
+using Sphene.API.SignalR;
 using MareSynchronosServer.Hubs;
 
 namespace MareSynchronosStaticFilesServer.Services;

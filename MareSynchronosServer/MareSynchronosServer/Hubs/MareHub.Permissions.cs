@@ -1,8 +1,8 @@
-﻿using MareSynchronos.API.Data.Enum;
-using MareSynchronos.API.Dto;
-using MareSynchronos.API.Dto.Group;
-using MareSynchronos.API.Dto.User;
-using MareSynchronos.API.Data.Extensions;
+using Sphene.API.Data.Enum;
+using Sphene.API.Dto;
+using Sphene.API.Dto.Group;
+using Sphene.API.Dto.User;
+using Sphene.API.Data.Extensions;
 using MareSynchronosServer.Utils;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;

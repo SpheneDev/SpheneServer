@@ -1,2 +1,2 @@
 @echo off
-docker compose -f compose\mare-standalone.yml -p standalone up
+docker-compose -f compose\mare-standalone.yml --env-file .env -p standalone up -d

@@ -1,4 +1,4 @@
-﻿using MareSynchronos.API.SignalR;
+using Sphene.API.SignalR;
 using MareSynchronosServer.Hubs;
 using MareSynchronosShared.Utils;
 using Microsoft.AspNetCore.Authorization;

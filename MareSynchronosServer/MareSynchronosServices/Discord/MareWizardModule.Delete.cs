@@ -1,4 +1,4 @@
-﻿using Discord.Interactions;
+using Discord.Interactions;
 using Discord;
 using MareSynchronosShared.Utils;
 using MareSynchronosShared.Utils.Configuration;
@@ -18,12 +18,12 @@ public partial class MareWizardModule
 
         using var mareDb = await GetDbContext().ConfigureAwait(false);
         EmbedBuilder eb = new();
-        eb.WithTitle("Delete Account");
-        eb.WithDescription("You can delete your primary or secondary UIDs here." + Environment.NewLine + Environment.NewLine
-            + "__Note: deleting your primary UID will delete all associated secondary UIDs as well.__" + Environment.NewLine + Environment.NewLine
-            + "- 1️⃣ is your primary account/UID" + Environment.NewLine
-            + "- 2️⃣ are all your secondary accounts/UIDs" + Environment.NewLine
-            + "If you are using Vanity UIDs the original UID is displayed in the second line of the account selection.");
+        eb.WithTitle("Sever Soul Connection");
+        eb.WithDescription("You can sever your primary or secondary soul connections here." + Environment.NewLine + Environment.NewLine
+            + "__Note: severing your primary soul will delete all associated secondary soul fragments as well.__" + Environment.NewLine + Environment.NewLine
+            + "- 1️⃣ is your primary soul/UID" + Environment.NewLine
+            + "- 2️⃣ are all your secondary soul fragments/UIDs" + Environment.NewLine
+            + "If you are using Vanity UIDs the original UID is displayed in the second line of the soul selection.");
         eb.WithColor(Color.Blue);
 
         ComponentBuilder cb = new();
@@ -42,15 +42,15 @@ public partial class MareWizardModule
         using var mareDb = await GetDbContext().ConfigureAwait(false);
         bool isPrimary = mareDb.Auth.Single(u => u.UserUID == uid).PrimaryUserUID == null;
         EmbedBuilder eb = new();
-        eb.WithTitle($"Are you sure you want to delete {uid}?");
-        eb.WithDescription($"This operation is irreversible. All your pairs, joined syncshells and information stored on the service for {uid} will be " +
-            $"irrevocably deleted." +
+        eb.WithTitle($"Are you sure you want to sever soul connection {uid}?");
+        eb.WithDescription($"This operation is irreversible. All your soul bonds, joined syncshells and information stored in the network for {uid} will be " +
+            $"irrevocably severed." +
             (isPrimary ? (Environment.NewLine + Environment.NewLine +
-            "⚠️ **You are about to delete a Primary UID, all attached Secondary UIDs and their information will be deleted as well.** ⚠️") : string.Empty));
+            "⚠️ **You are about to sever a Primary Soul, all attached Secondary Soul Fragments and their information will be severed as well.** ⚠️") : string.Empty));
         eb.WithColor(Color.Purple);
         ComponentBuilder cb = new();
         cb.WithButton("Cancel", "wizard-delete", emote: new Emoji("❌"));
-        cb.WithButton($"Delete {uid}", "wizard-delete-confirm:" + uid, ButtonStyle.Danger, emote: new Emoji("🗑️"));
+        cb.WithButton($"Sever {uid}", "wizard-delete-confirm:" + uid, ButtonStyle.Danger, emote: new Emoji("🗑️"));
         await ModifyInteraction(eb, cb).ConfigureAwait(false);
     }
 
@@ -76,8 +76,8 @@ public partial class MareWizardModule
             if (!string.Equals("DELETE", modal.Delete, StringComparison.Ordinal))
             {
                 EmbedBuilder eb = new();
-                eb.WithTitle("Did not confirm properly");
-                eb.WithDescription($"You entered {modal.Delete} but requested was DELETE. Please try again and enter DELETE to confirm.");
+                eb.WithTitle("Soul severance not confirmed properly");
+                eb.WithDescription($"You entered {modal.Delete} but requested was DELETE. Please try again and enter DELETE to confirm the soul severance.");
                 eb.WithColor(Color.Red);
                 ComponentBuilder cb = new();
                 cb.WithButton("Cancel", "wizard-delete", emote: new Emoji("❌"));
@@ -95,7 +95,7 @@ public partial class MareWizardModule
                 await SharedDbFunctions.PurgeUser(_logger, user, db, maxGroupsByUser).ConfigureAwait(false);
 
                 EmbedBuilder eb = new();
-                eb.WithTitle($"Account {uid} successfully deleted");
+                eb.WithTitle($"Soul connection {uid} successfully severed");
                 eb.WithColor(Color.Green);
                 ComponentBuilder cb = new();
                 AddHome(cb);

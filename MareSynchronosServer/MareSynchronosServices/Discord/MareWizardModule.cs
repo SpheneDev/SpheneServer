@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using MareSynchronosShared.Data;
@@ -68,10 +68,10 @@ public partial class MareWizardModule : InteractionModuleBase
             _ => "unknown",
         };
 
-        eb.WithTitle("Mare Bot Services Captcha");
-        eb.WithDescription("You are seeing this embed because you interact with this bot for the first time since the bot has been restarted." + Environment.NewLine + Environment.NewLine
-            + "This bot __requires__ embeds for its function. To proceed, please verify you have embeds enabled." + Environment.NewLine
-            + $"## To verify you have embeds enabled __press on the **{nthButtonText}** button ({nthButtonEmoji}).__");
+        eb.WithTitle("Sphene Network Authentication Protocol");
+        eb.WithDescription("You are accessing this terminal interface for the first time since the network has been reinitialized." + Environment.NewLine + Environment.NewLine
+            + "This terminal __requires__ visual protocols for its function. To proceed, please verify you have visual protocols enabled." + Environment.NewLine
+            + $"## To verify you have visual protocols enabled __press on the **{nthButtonText}** button ({nthButtonEmoji}).__");
         eb.WithColor(Color.LightOrange);
 
         int incorrectButtonHighlight = 1;
@@ -109,11 +109,11 @@ public partial class MareWizardModule : InteractionModuleBase
     public async Task WizardCaptchaFail(int button)
     {
         ComponentBuilder cb = new();
-        cb.WithButton("Restart (with Embeds enabled)", "wizard-captcha:false", emote: new Emoji("↩️"));
+        cb.WithButton("Reinitialize (with visual protocols enabled)", "wizard-captcha:false", emote: new Emoji("↩️"));
         await ((Context.Interaction) as IComponentInteraction).UpdateAsync(m =>
         {
             m.Embed = null;
-            m.Content = "You pressed the wrong button. You likely have embeds disabled. Enable embeds in your Discord client (Settings -> Chat -> \"Show embeds and preview website links pasted into chat\") and try again.";
+            m.Content = "You pressed the wrong button. You likely have visual protocols disabled. Enable visual protocols in your Discord client (Settings -> Chat -> \"Show embeds and preview website links pasted into chat\") and try again.";
             m.Components = cb.Build();
         }).ConfigureAwait(false);
 
@@ -141,8 +141,8 @@ public partial class MareWizardModule : InteractionModuleBase
             if (isBanned)
             {
                 EmbedBuilder ebBanned = new();
-                ebBanned.WithTitle("You are not welcome here");
-                ebBanned.WithDescription("Your Discord account is banned");
+                ebBanned.WithTitle("Soul resonance disrupted");
+                ebBanned.WithDescription("Your connection to the Sphene Network has been severed due to protocol violations.");
                 await RespondAsync(embed: ebBanned.Build(), ephemeral: true).ConfigureAwait(false);
                 return;
             }
@@ -155,34 +155,29 @@ public partial class MareWizardModule : InteractionModuleBase
 #endif
 
         EmbedBuilder eb = new();
-        eb.WithTitle("Welcome to the Mare Synchronos Service Bot for this server");
-        eb.WithDescription("Here is what you can do:" + Environment.NewLine + Environment.NewLine
-            + (!hasAccount ? string.Empty : ("- Check your account status press \"ℹ️ User Info\"" + Environment.NewLine))
-            + (hasAccount ? string.Empty : ("- Register a new Mare Account press \"🌒 Register\"" + Environment.NewLine))
-            + (!hasAccount ? string.Empty : ("- You lost your secret key press \"🏥 Recover\"" + Environment.NewLine))
-            + (hasAccount ? string.Empty : ("- If you have changed your Discord account press \"🔗 Relink\"" + Environment.NewLine))
-            + (!hasAccount ? string.Empty : ("- Create a secondary UIDs press \"2️⃣ Secondary UID\"" + Environment.NewLine))
-            + (!hasAccount ? string.Empty : ("- Set a Vanity UID press \"💅 Vanity IDs\"" + Environment.NewLine))
-            + (!hasAccount ? string.Empty : (!isInAprilFoolsMode ? string.Empty : ("- Check your WorryCoin™ and MareToken© balance and add payment options" + Environment.NewLine)))
-            + (!hasAccount ? string.Empty : ("- Delete your primary or secondary accounts with \"⚠️ Delete\""))
+        eb.WithTitle("Welcome to the Sphene Network Terminal");
+        eb.WithDescription("Soul synchronization protocols available:" + Environment.NewLine + Environment.NewLine
+            + (!hasAccount ? string.Empty : ("- Check your soul resonance status press \"ℹ️ User Info\"" + Environment.NewLine))
+            + (hasAccount ? string.Empty : ("- Initialize new soul connection press \"⚛ Register\"" + Environment.NewLine))
+            //+ (!hasAccount ? string.Empty : ("- Recover lost electrope key press \"🏥 Recover\"" + Environment.NewLine))
+            //+ (hasAccount ? string.Empty : ("- Reestablish soul link press \"🔗 Relink\"" + Environment.NewLine))
+            //+ (!hasAccount ? string.Empty : ("- Create secondary soul fragments press \"2️⃣ Secondary UID\"" + Environment.NewLine))
+            //+ (!hasAccount ? string.Empty : ("- Set soul resonance identifier press \"💅 Vanity IDs\"" + Environment.NewLine))
+            + (!hasAccount ? string.Empty : ("- Sever soul connections with \"⚠️ Delete\""))
             );
         eb.WithColor(Color.Blue);
         ComponentBuilder cb = new();
         if (!hasAccount)
         {
-            cb.WithButton("Register", "wizard-register", ButtonStyle.Primary, new Emoji("🌒"));
-            cb.WithButton("Relink", "wizard-relink", ButtonStyle.Secondary, new Emoji("🔗"));
+            cb.WithButton("Register", "wizard-register", ButtonStyle.Primary, new Emoji("⚛"));
+            //cb.WithButton("Relink", "wizard-relink", ButtonStyle.Secondary, new Emoji("🔗"));
         }
         else
         {
             cb.WithButton("User Info", "wizard-userinfo", ButtonStyle.Secondary, new Emoji("ℹ️"));
-            cb.WithButton("Recover", "wizard-recover", ButtonStyle.Secondary, new Emoji("🏥"));
-            cb.WithButton("Secondary UID", "wizard-secondary", ButtonStyle.Secondary, new Emoji("2️⃣"));
-            cb.WithButton("Vanity IDs", "wizard-vanity", ButtonStyle.Secondary, new Emoji("💅"));
-            if (isInAprilFoolsMode)
-            {
-                cb.WithButton("WorryCoin™ and MareToken© management", "wizard-fools", ButtonStyle.Primary, new Emoji("💲"));
-            }
+            //cb.WithButton("Recover", "wizard-recover", ButtonStyle.Secondary, new Emoji("🏥"));
+            //cb.WithButton("Secondary UID", "wizard-secondary", ButtonStyle.Secondary, new Emoji("2️⃣"));
+            //cb.WithButton("Vanity IDs", "wizard-vanity", ButtonStyle.Secondary, new Emoji("💅"));
             cb.WithButton("Delete", "wizard-delete", ButtonStyle.Danger, new Emoji("⚠️"));
         }
 
@@ -231,8 +226,8 @@ public partial class MareWizardModule : InteractionModuleBase
         }
 
         EmbedBuilder eb = new();
-        eb.WithTitle("Session expired");
-        eb.WithDescription("This session has expired since you have either again pressed \"Start\" on the initial message or the bot has been restarted." + Environment.NewLine + Environment.NewLine
+        eb.WithTitle("Network connection lost");
+        eb.WithDescription("Your terminal session has timed out. Please reinitialize the connection." + Environment.NewLine + Environment.NewLine
             + "Please use the newly started interaction or start a new one.");
         eb.WithColor(Color.Red);
         ComponentBuilder cb = new();
