@@ -267,6 +267,30 @@ public partial class MareHub
             anyChanges = true;
         }
 
+        if (updateDto.HeelsData != null)
+        {
+            charaData.HeelsData = updateDto.HeelsData;
+            anyChanges = true;
+        }
+
+        if (updateDto.HonorificData != null)
+        {
+            charaData.HonorificData = updateDto.HonorificData;
+            anyChanges = true;
+        }
+
+        if (updateDto.MoodlesData != null)
+        {
+            charaData.MoodlesData = updateDto.MoodlesData;
+            anyChanges = true;
+        }
+
+        if (updateDto.PetNamesData != null)
+        {
+            charaData.PetNamesData = updateDto.PetNamesData;
+            anyChanges = true;
+        }
+
         if (updateDto.AccessType != null)
         {
             charaData.AccessType = GetAccessType(updateDto.AccessType.Value);
@@ -482,6 +506,10 @@ public partial class MareHub
             GlamourerData = charaData.GlamourerData,
             FileSwaps = charaData.FileSwaps.Select(k => new GamePathEntry(k.FilePath, k.GamePath)).ToList(),
             ManipulationData = charaData.ManipulationData,
+            HeelsData = charaData.HeelsData,
+            HonorificData = charaData.HonorificData,
+            MoodlesData = charaData.MoodlesData,
+            PetNamesData = charaData.PetNamesData,
         };
     }
 
@@ -503,6 +531,10 @@ public partial class MareHub
             CreatedDate = charaData.CreatedDate,
             UpdatedDate = charaData.UpdatedDate,
             ManipulationData = charaData.ManipulationData,
+            HeelsData = charaData.HeelsData,
+            HonorificData = charaData.HonorificData,
+            MoodlesData = charaData.MoodlesData,
+            PetNamesData = charaData.PetNamesData,
             DownloadCount = charaData.DownloadCount,
             PoseData = [.. charaData.Poses.OrderBy(p => p.Id).Select(k =>
             {

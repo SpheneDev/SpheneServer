@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace MareSynchronosShared.Models;
 
@@ -30,6 +30,10 @@ public class CharaData
     public string? GlamourerData { get; set; }
     public string? CustomizeData { get; set; }
     public string? ManipulationData { get; set; }
+    public string? HeelsData { get; set; }
+    public string? HonorificData { get; set; }
+    public string? MoodlesData { get; set; }
+    public string? PetNamesData { get; set; }
     public int DownloadCount { get; set; } = 0;
     public virtual ICollection<CharaDataPose> Poses { get; set; } = [];
     public virtual ICollection<CharaDataFile> Files { get; set; } = [];

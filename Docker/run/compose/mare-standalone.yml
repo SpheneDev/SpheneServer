@@ -90,7 +90,7 @@ services:
     ports:
       - 6200:6200/tcp
     restart: on-failure
-    user: "1000:1000"  # Set user and group ID to avoid permission issues
+    #user: "1000:1000"  # Set user and group ID to avoid permission issues
     environment:
       MareSynchronos__CdnFullUrl: "${DEV_MARE_CDNURL}"
       DOTNET_USE_POLLING_FILE_WATCHER: 1
