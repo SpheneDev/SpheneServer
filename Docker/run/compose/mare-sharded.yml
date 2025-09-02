@@ -3,9 +3,9 @@ services:
     image: postgres:latest
     restart: always
     environment:
-      POSTGRES_DB: mare
-      POSTGRES_USER: mare
-      POSTGRES_PASSWORD: secretdevpassword
+      POSTGRES_DB: ${POSTGRES_DB:-mare}
+      POSTGRES_USER: ${POSTGRES_USER:-mare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretdevpassword}
     volumes:
       - ../data/postgresql/:/var/lib/postgresql/data
       - postgres_socket:/var/run/postgresql:rw
@@ -29,7 +29,7 @@ services:
         
   redis:
     image: redis:latest
-    command: [sh, -c, "rm -f /data/dump.rdb && redis-server --save \"\" --appendonly no --requirepass secretredispassword"]
+    command: [sh, -c, "rm -f /data/dump.rdb && redis-server --save \"\" --appendonly no --requirepass ${REDIS_PASSWORD:-secretredispassword}"]
     volumes:
       - cache:/data
 

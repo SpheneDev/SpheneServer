@@ -6,9 +6,9 @@ services:
     ports:
       - 5432:5432/tcp
     environment:
-      POSTGRES_DB: mare
-      POSTGRES_USER: mare
-      POSTGRES_PASSWORD: secretdevpassword
+      POSTGRES_DB: ${POSTGRES_DB:-mare}
+      POSTGRES_USER: ${POSTGRES_USER:-mare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretdevpassword}
     volumes:
       - ../data/postgresql/:/var/lib/postgresql/data
       - postgres_socket:/var/run/postgresql:rw
@@ -20,7 +20,7 @@ services:
 
   redis:
     image: redis:latest
-    command: [sh, -c, "rm -f /data/dump.rdb && redis-server --save \"\" --appendonly no --requirepass secretredispassword"]
+    command: [sh, -c, "rm -f /data/dump.rdb && redis-server --save \"\" --appendonly no --requirepass ${REDIS_PASSWORD:-secretredispassword}"]
     volumes:
       - cache:/data
 
@@ -33,6 +33,11 @@ services:
     environment:
       MareSynchronos__CdnFullUrl: "${DEV_MARE_CDNURL}"
       MareSynchronos__XIVAPIKey: "${DEV_MARE_XIVAPIKEY}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-mare}"
+      POSTGRES_USER: "${POSTGRES_USER:-mare}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
       DOTNET_USE_POLLING_FILE_WATCHER: 1
     volumes:
       - ../config/standalone/server-standalone.json:/opt/MareSynchronosServer/appsettings.json
@@ -54,6 +59,11 @@ services:
       - 8080:80/tcp
       - 6150:6150/tcp
     environment:
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-mare}"
+      POSTGRES_USER: "${POSTGRES_USER:-mare}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
       DOTNET_USE_POLLING_FILE_WATCHER: 1
     volumes:
       - ../config/standalone/authservice-standalone.json:/opt/MareSynchronosAuthService/appsettings.json
@@ -74,6 +84,11 @@ services:
       MareSynchronos__DiscordChannelForReports: "${DEV_MARE_DISCORDCHANNEL}"
       MareSynchronos__DiscordChannelForCommands: "${DEV_MARE_DISCORDCHANNEL}"
       MareSynchronos__DiscordRoleRegistered: "${DEV_MARE_DISCORDROLE}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-mare}"
+      POSTGRES_USER: "${POSTGRES_USER:-mare}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
       DOTNET_USE_POLLING_FILE_WATCHER: 1
     volumes:
       - ../config/standalone/services-standalone.json:/opt/MareSynchronosServices/appsettings.json
@@ -93,6 +108,11 @@ services:
     #user: "1000:1000"  # Set user and group ID to avoid permission issues
     environment:
       MareSynchronos__CdnFullUrl: "${DEV_MARE_CDNURL}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-mare}"
+      POSTGRES_USER: "${POSTGRES_USER:-mare}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
       DOTNET_USE_POLLING_FILE_WATCHER: 1
     volumes:
       - ../config/standalone/files-standalone.json:/opt/MareSynchronosStaticFilesServer/appsettings.json

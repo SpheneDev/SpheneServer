@@ -16,7 +16,14 @@ public class MareDbContext : DbContext
             return;
         }
 
-        optionsBuilder.UseNpgsql("Host=localhost;Port=5432;Database=mare;Username=postgres", builder =>
+        var host = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "localhost";
+        var port = Environment.GetEnvironmentVariable("POSTGRES_PORT") ?? "5432";
+        var database = Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "mare";
+        var username = Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "mare";
+        var password = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "secretdevpassword";
+        
+        var connectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password}";
+        optionsBuilder.UseNpgsql(connectionString, builder =>
         {
             builder.MigrationsHistoryTable("_efmigrationshistory", "public");
             builder.MigrationsAssembly("MareSynchronosShared");
