@@ -1,14 +1,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 as BUILD
 
-COPY SpheneAPI /server/SpheneAPI
+COPY SpheneAPI /SpheneAPI
 COPY server/MareSynchronosServer/MareSynchronosShared /server/MareSynchronosServer/MareSynchronosShared
 COPY server/MareSynchronosServer/MareSynchronosAuthService /server/MareSynchronosServer/MareSynchronosAuthService
 
 # Build SpheneAPI first
-WORKDIR /server/SpheneAPI/SpheneAPI
+WORKDIR /SpheneAPI/SpheneAPI
 RUN dotnet build \
         --configuration=Release \
-        --output=/server/SpheneAPI/bin \
+        --output=/SpheneAPI/bin \
         Sphene.API.csproj
 
 WORKDIR /server/MareSynchronosServer/MareSynchronosAuthService/
