@@ -1,8 +1,15 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 as BUILD
 
 COPY SpheneAPI /server/SpheneAPI
-COPY MareSynchronosServer/MareSynchronosShared /server/MareSynchronosServer/MareSynchronosShared
-COPY MareSynchronosServer/MareSynchronosServices /server/MareSynchronosServer/MareSynchronosServices
+COPY server/MareSynchronosServer/MareSynchronosShared /server/MareSynchronosServer/MareSynchronosShared
+COPY server/MareSynchronosServer/MareSynchronosServices /server/MareSynchronosServer/MareSynchronosServices
+
+# Build SpheneAPI first
+WORKDIR /server/SpheneAPI/SpheneAPI
+RUN dotnet build \
+        --configuration=Release \
+        --output=/workspace/temp/SpheneAPI \
+        Sphene.API.csproj
 
 WORKDIR /server/MareSynchronosServer/MareSynchronosServices/
 
