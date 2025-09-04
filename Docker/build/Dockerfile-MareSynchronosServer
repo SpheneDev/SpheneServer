@@ -8,7 +8,7 @@ COPY server/MareSynchronosServer/MareSynchronosServer /server/MareSynchronosServ
 WORKDIR /server/SpheneAPI/SpheneAPI
 RUN dotnet build \
         --configuration=Release \
-        --output=/workspace/temp/SpheneAPI \
+        --output=/server/SpheneAPI/bin \
         Sphene.API.csproj
 
 WORKDIR /server/MareSynchronosServer/MareSynchronosServer/

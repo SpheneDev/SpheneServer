@@ -1,4 +1,4 @@
 @echo off
 cd ..\..\..\..\
 docker build -t mare-synchronos-staticfilesserver:latest . -f server\Docker\build\Dockerfile-MareSynchronosStaticFilesServer --no-cache --pull --force-rm
-cd Docker\build\windows-local
+cd server\Docker\build\windows-local

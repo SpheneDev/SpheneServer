@@ -55,7 +55,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-    <ProjectReference Include="..\..\..\SpheneAPI\SpheneAPI\Sphene.API.csproj" />
+    <ProjectReference Include="..\..\SpheneAPI\SpheneAPI\Sphene.API.csproj" />
   </ItemGroup>
 
 </Project>
