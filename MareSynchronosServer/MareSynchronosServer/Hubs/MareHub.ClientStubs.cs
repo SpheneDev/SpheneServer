@@ -47,6 +47,7 @@ namespace MareSynchronosServer.Hubs
 
         public Task Client_UserUpdateSelfPairPermissions(UserPermissionsDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_UserUpdateDefaultPermissions(DefaultPermissionsDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_UserReceiveCharacterDataAcknowledgment(CharacterDataAcknowledgmentDto acknowledgmentDto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_UpdateUserIndividualPairStatusDto(UserIndividualPairStatusDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_GroupChangeUserPairPermissions(GroupPairUserPermissionDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_GposeLobbyJoin(UserData userData) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");

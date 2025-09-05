@@ -279,12 +279,74 @@ public partial class MareHub
 
         _logger.LogCallInfo(MareHubLogger.Args(recipientUids.Count));
 
-        await Clients.Users(recipientUids).Client_UserReceiveCharacterData(new OnlineUserCharaDataDto(new UserData(UserUID), dto.CharaData)).ConfigureAwait(false);
+        // Use client-provided acknowledgment ID or generate a new one if not provided
+        var acknowledgmentId = !string.IsNullOrEmpty(dto.AcknowledgmentId) ? dto.AcknowledgmentId : Guid.NewGuid().ToString();
+        
+        _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] UserPushData - Using acknowledgment ID:", acknowledgmentId, "for sender:", UserUID));
+        
+        // Store the mapping between acknowledgment ID and sender UID
+        var added = _acknowledgmentSenders.TryAdd(acknowledgmentId, UserUID);
+        _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] UserPushData - Stored acknowledgment mapping:", acknowledgmentId, "->", UserUID, "Added:", added));
+        _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] UserPushData - Total acknowledgment mappings:", _acknowledgmentSenders.Count));
+        
+        var characterDataDto = new OnlineUserCharaDataDto(new UserData(UserUID), dto.CharaData)
+        {
+            AcknowledgmentId = acknowledgmentId,
+            RequiresAcknowledgment = true
+        };
+
+        await Clients.Users(recipientUids).Client_UserReceiveCharacterData(characterDataDto).ConfigureAwait(false);
 
         _mareCensus.PublishStatistics(UserUID, dto.CensusDataDto);
 
         _mareMetrics.IncCounter(MetricsAPI.CounterUserPushData);
         _mareMetrics.IncCounter(MetricsAPI.CounterUserPushDataTo, recipientUids.Count);
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task UserSendCharacterDataAcknowledgment(CharacterDataAcknowledgmentDto acknowledgmentDto)
+    {
+        _logger.LogCallInfo(MareHubLogger.Args(acknowledgmentDto.AcknowledgmentId, acknowledgmentDto.Success));
+
+        // Debug: Log all current acknowledgment senders
+        _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] Current _acknowledgmentSenders count:", _acknowledgmentSenders.Count));
+        foreach (var kvp in _acknowledgmentSenders)
+        {
+            _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] AckId:", kvp.Key, "-> Sender:", kvp.Value));
+        }
+
+        // Find the original sender of the character data based on acknowledgment ID
+        if (_acknowledgmentSenders.TryGetValue(acknowledgmentDto.AcknowledgmentId, out var originalSenderUid))
+        {
+            _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] Found original sender", originalSenderUid, "for AckId", acknowledgmentDto.AcknowledgmentId, "forwarding acknowledgment"));
+            
+            // Create a new acknowledgment DTO with the current user (recipient) as the acknowledging user
+            var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.AcknowledgmentId)
+            {
+                Success = acknowledgmentDto.Success,
+                ErrorMessage = acknowledgmentDto.ErrorMessage,
+                AcknowledgedAt = acknowledgmentDto.AcknowledgedAt
+            };
+            
+            _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] Forwarding acknowledgment with recipient UID", UserUID, "instead of original", acknowledgmentDto.User.UID));
+            
+            // Send acknowledgment only to the original sender
+            await Clients.User(originalSenderUid).Client_UserReceiveCharacterDataAcknowledgment(forwardedAcknowledgment).ConfigureAwait(false);
+            
+            _logger.LogCallInfo(MareHubLogger.Args("[DEBUG] Successfully forwarded acknowledgment to", originalSenderUid, "for AckId", acknowledgmentDto.AcknowledgmentId));
+            
+            // Clean up the acknowledgment mapping after successful delivery
+            _acknowledgmentSenders.TryRemove(acknowledgmentDto.AcknowledgmentId, out _);
+            
+            _logger.LogCallInfo(MareHubLogger.Args(acknowledgmentDto.AcknowledgmentId, originalSenderUid));
+        }
+        else
+        {
+            _logger.LogCallWarning(MareHubLogger.Args("[DEBUG] Could not find original sender for AckId", acknowledgmentDto.AcknowledgmentId, "Available AckIds:", string.Join(", ", _acknowledgmentSenders.Keys)));
+            _logger.LogCallWarning(MareHubLogger.Args(acknowledgmentDto.AcknowledgmentId));
+        }
+        
+        _mareMetrics.IncCounter(MetricsAPI.CounterUserPushData);
     }
 
     [Authorize(Policy = "Identified")]

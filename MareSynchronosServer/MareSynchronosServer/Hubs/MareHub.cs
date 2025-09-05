@@ -22,6 +22,7 @@ namespace MareSynchronosServer.Hubs;
 public partial class MareHub : Hub<IMareHub>, IMareHub
 {
     private static readonly ConcurrentDictionary<string, string> _userConnections = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> _acknowledgmentSenders = new(StringComparer.Ordinal);
     private readonly MareMetrics _mareMetrics;
     private readonly SystemInfoService _systemInfoService;
     private readonly IHttpContextAccessor _contextAccessor;
@@ -202,6 +203,7 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
             finally
             {
                 _userConnections.Remove(UserUID, out _);
+                CleanupAcknowledgmentMappingsForUser(UserUID);
             }
         }
         else
@@ -210,5 +212,27 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
         }
 
         await base.OnDisconnectedAsync(exception).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Cleanup acknowledgment mappings for a specific user
+    /// </summary>
+    /// <param name="userUid">The user UID to cleanup mappings for</param>
+    private static void CleanupAcknowledgmentMappingsForUser(string userUid)
+    {
+        var keysToRemove = new List<string>();
+        
+        foreach (var kvp in _acknowledgmentSenders)
+        {
+            if (kvp.Value == userUid)
+            {
+                keysToRemove.Add(kvp.Key);
+            }
+        }
+        
+        foreach (var key in keysToRemove)
+        {
+            _acknowledgmentSenders.TryRemove(key, out _);
+        }
     }
 }
