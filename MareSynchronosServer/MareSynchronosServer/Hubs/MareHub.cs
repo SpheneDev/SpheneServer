@@ -37,6 +37,7 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
     private readonly GPoseLobbyDistributionService _gPoseLobbyDistributionService;
     private readonly Uri _fileServerAddress;
     private readonly Version _expectedClientVersion;
+    private readonly Version _minimumClientVersion;
     private readonly Lazy<MareDbContext> _dbContextLazy;
     private MareDbContext DbContext => _dbContextLazy.Value;
     private readonly int _maxCharaDataByUser;
@@ -56,6 +57,7 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
         _maxGroupUserCount = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxGroupUserCount), 100);
         _fileServerAddress = configuration.GetValue<Uri>(nameof(ServerConfiguration.CdnFullUrl));
         _expectedClientVersion = configuration.GetValueOrDefault(nameof(ServerConfiguration.ExpectedClientVersion), new Version(0, 0, 0));
+        _minimumClientVersion = configuration.GetValueOrDefault(nameof(ServerConfiguration.MinimumClientVersion), new Version(0, 0, 0));
         _maxCharaDataByUser = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUser), 10);
         _maxCharaDataByUserVanity = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUserVanity), 50);
         _contextAccessor = contextAccessor;
@@ -145,6 +147,32 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
     [Authorize(Policy = "Authenticated")]
     public override async Task OnConnectedAsync()
     {
+        // Check client version from User-Agent header before allowing connection
+        var userAgent = _contextAccessor.HttpContext?.Request.Headers.UserAgent.ToString() ?? string.Empty;
+        
+        var clientVersion = ExtractClientVersionFromUserAgent(userAgent);
+        
+        // Reject connections if client version cannot be extracted (NULL) or is below minimum
+        if (clientVersion == null)
+        {
+            _logger.LogCallWarning(MareHubLogger.Args($"Connection rejected: Client version could not be extracted from User-Agent '{userAgent}'. Expected Sphene client."));
+            await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Connection rejected: Invalid client. Please update to the latest Sphene version.").ConfigureAwait(false);
+            Context.Abort();
+            return;
+        }
+        
+        if (clientVersion < _minimumClientVersion)
+        {
+            _logger.LogCallWarning(MareHubLogger.Args($"Client version {clientVersion} is outdated. Minimum required version: {_minimumClientVersion}"));
+            
+            await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, 
+                $"Your client version ({clientVersion}) is outdated. Minimum required version is {_minimumClientVersion}. Please update your Sphene client.").ConfigureAwait(false);
+            
+            // Disconnect the client
+            Context.Abort();
+            return;
+        }
+
         if (_userConnections.TryGetValue(UserUID, out var oldId))
         {
             _logger.LogCallWarning(MareHubLogger.Args(_contextAccessor.GetIpAddress(), "UpdatingId", oldId, Context.ConnectionId));
@@ -212,6 +240,26 @@ public partial class MareHub : Hub<IMareHub>, IMareHub
         }
 
         await base.OnDisconnectedAsync(exception).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Extract client version from User-Agent header
+    /// </summary>
+    /// <param name="userAgent">The User-Agent header value</param>
+    /// <returns>The extracted version or null if not found</returns>
+    private static Version? ExtractClientVersionFromUserAgent(string userAgent)
+    {
+        if (string.IsNullOrEmpty(userAgent))
+            return null;
+
+        // User-Agent format: "Sphene/1.2.3"
+        var match = System.Text.RegularExpressions.Regex.Match(userAgent, @"Sphene/(\d+\.\d+\.\d+)");
+        if (match.Success && Version.TryParse(match.Groups[1].Value, out var version))
+        {
+            return version;
+        }
+
+        return null;
     }
 
     /// <summary>

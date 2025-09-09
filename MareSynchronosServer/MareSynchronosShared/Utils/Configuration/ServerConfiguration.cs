@@ -11,6 +11,9 @@ public class ServerConfiguration : MareConfigurationBase
     public Version ExpectedClientVersion { get; set; } = new Version(0, 0, 0);
 
     [RemoteConfiguration]
+    public Version MinimumClientVersion { get; set; } = new Version(0, 0, 0);
+
+    [RemoteConfiguration]
     public int MaxExistingGroupsByUser { get; set; } = 3;
 
     [RemoteConfiguration]
