@@ -1,0 +1,132 @@
+services:
+  postgres:
+    image: postgres:latest
+    command: ["postgres", "-c", "log_statement=all"]
+    restart: always
+    ports:
+      - 5432:5432/tcp
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sphene}
+      POSTGRES_USER: ${POSTGRES_USER:-sphene}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretdevpassword}
+    volumes:
+      - ../data/postgresql/:/var/lib/postgresql/data
+      - postgres_socket:/var/run/postgresql:rw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sphene"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:latest
+    command: [sh, -c, "rm -f /data/dump.rdb && redis-server --save \"\" --appendonly no --requirepass ${REDIS_PASSWORD:-secretredispassword}"]
+    volumes:
+      - cache:/data
+
+  sphene-server:
+    image: sphene-server:latest
+    restart: on-failure
+    ports:
+      - 6000:6000/tcp
+      - 6050:6050/tcp
+    environment:
+      Sphene__CdnFullUrl: "${DEV_SPHENE_CDNURL}"
+      Sphene__XIVAPIKey: "${DEV_SPHENE_XIVAPIKEY}"
+      Sphene__RedisConnectionString: "redis:6379,password=secretredispassword,abortConnect=false"
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-sphene}"
+      POSTGRES_USER: "${POSTGRES_USER:-sphene}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
+      DOTNET_USE_POLLING_FILE_WATCHER: 1
+    volumes:
+      - ../config/standalone/server-standalone.json:/opt/SpheneServer/appsettings.json
+      - ../log/server-standalone/:/opt/SpheneServer/logs/:rw
+      - postgres_socket:/var/run/postgresql/:rw
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:6000/health || exit 1"]
+      retries: 60
+      start_period: 10s
+      timeout: 1s
+
+  sphene-auth:
+    image: sphene-authservice:latest
+    restart: on-failure
+    ports:
+      - 8080:80/tcp
+      - 6150:6150/tcp
+    environment:
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-sphene}"
+      POSTGRES_USER: "${POSTGRES_USER:-sphene}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
+      DOTNET_USE_POLLING_FILE_WATCHER: 1
+    volumes:
+      - ../config/standalone/authservice-standalone.json:/opt/SpheneAuthService/appsettings.json
+      - ../log/authservice-standalone/:/opt/SpheneAuthService/logs/:rw
+      - postgres_socket:/var/run/postgresql/:rw
+    depends_on:
+      sphene-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  sphene-services:
+    image: sphene-services:latest
+    restart: on-failure
+    environment:
+      Sphene__DiscordBotToken: "${DEV_SPHENE_DISCORDTOKEN}"
+      Sphene__DiscordChannelForMessages: "${DEV_SPHENE_DISCORDCHANNEL}"
+      Sphene__DiscordChannelForReports: "${DEV_SPHENE_DISCORDCHANNEL}"
+      Sphene__DiscordChannelForCommands: "${DEV_SPHENE_DISCORDCHANNEL}"
+      Sphene__DiscordRoleRegistered: "${DEV_SPHENE_DISCORDROLE}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-sphene}"
+      POSTGRES_USER: "${POSTGRES_USER:-sphene}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
+      DOTNET_USE_POLLING_FILE_WATCHER: 1
+    volumes:
+      - ../config/standalone/services-standalone.json:/opt/SpheneServices/appsettings.json
+      - ../log/services-standalone/:/opt/SpheneServices/logs/:rw
+      - postgres_socket:/var/run/postgresql/:rw
+    depends_on:
+      sphene-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  sphene-files:
+    image: sphene-staticfilesserver:latest
+    ports:
+      - 6200:6200/tcp
+    restart: on-failure
+    #user: "1000:1000"  # Set user and group ID to avoid permission issues
+    environment:
+      Sphene__CdnFullUrl: "${DEV_SPHENE_CDNURL}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-localhost}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-sphene}"
+      POSTGRES_USER: "${POSTGRES_USER:-sphene}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secretdevpassword}"
+      DOTNET_USE_POLLING_FILE_WATCHER: 1
+    volumes:
+      - ../config/standalone/files-standalone.json:/opt/SpheneStaticFilesServer/appsettings.json
+      - ../log/files-standalone/:/opt/SpheneStaticFilesServer/logs/:rw
+      - postgres_socket:/var/run/postgresql/:rw
+      - ../data/files-standalone/:/sphenecache/:rw
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sphene-server:
+        condition: service_healthy
+
+volumes:
+  postgres_socket:
+  cache:
+    driver: local

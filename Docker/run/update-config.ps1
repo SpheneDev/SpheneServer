@@ -47,9 +47,9 @@ function Update-ConnectionString {
         # Build connection string with values from .env
         $dbHost = if ($EnvVars.ContainsKey('POSTGRES_HOST')) { $EnvVars['POSTGRES_HOST'] } else { 'localhost' }
         $dbPort = if ($EnvVars.ContainsKey('POSTGRES_PORT')) { $EnvVars['POSTGRES_PORT'] } else { '5432' }
-        $dbDatabase = if ($EnvVars.ContainsKey('POSTGRES_DB')) { $EnvVars['POSTGRES_DB'] } else { 'mare' }
-        $dbUsername = if ($EnvVars.ContainsKey('POSTGRES_USER')) { $EnvVars['POSTGRES_USER'] } else { 'mare' }
-        $dbPassword = if ($EnvVars.ContainsKey('POSTGRES_PASSWORD')) { $EnvVars['POSTGRES_PASSWORD'] } else { 'secretdevpassword' }
+        $dbDatabase = if ($EnvVars.ContainsKey('POSTGRES_DB')) { $EnvVars['POSTGRES_DB'] } else { 'sphene' }
+$dbUsername = if ($EnvVars.ContainsKey('POSTGRES_USER')) { $EnvVars['POSTGRES_USER'] } else { 'sphene' }
+        $dbPassword = if ($EnvVars.ContainsKey('POSTGRES_PASSWORD')) { $EnvVars['POSTGRES_PASSWORD'] } else { 'secretdevpasswordRnly89901317' }
         
         # For Docker containers, use Unix socket
         $connectionString = "Host=/var/run/postgresql;Port=$dbPort;Database=$dbDatabase;Username=$dbUsername;Password=$dbPassword;Keepalive=15;Minimum Pool Size=10;Maximum Pool Size=50;No Reset On Close=true;Max Auto Prepare=50;Enlist=false"

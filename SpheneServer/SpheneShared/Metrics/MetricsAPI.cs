@@ -1,0 +1,53 @@
+﻿namespace SpheneShared.Metrics;
+
+public class MetricsAPI
+{
+    public const string CounterInitializedConnections = "sphene_initialized_connections";
+    public const string GaugeConnections = "sphene_connections";
+    public const string GaugeAuthorizedConnections = "sphene_authorized_connections";
+    public const string GaugeAvailableWorkerThreads = "sphene_available_threadpool";
+    public const string GaugeAvailableIOWorkerThreads = "sphene_available_threadpool_io";
+    public const string GaugeUsersRegistered = "sphene_users_registered";
+    public const string CounterUsersRegisteredDeleted = "sphene_users_registered_deleted";
+    public const string GaugePairs = "sphene_pairs";
+    public const string GaugePairsPaused = "sphene_pairs_paused";
+    public const string GaugeFilesTotal = "sphene_files";
+    public const string GaugeFilesTotalColdStorage = "sphene_files_cold";
+    public const string GaugeFilesTotalSize = "sphene_files_size";
+    public const string GaugeFilesTotalSizeColdStorage = "sphene_files_size_cold";
+    public const string GaugeFilesDownloadingFromCache = "sphene_files_downloading_from_cache";
+    public const string GaugeFilesTasksWaitingForDownloadFromCache = "sphene_files_waiting_for_dl";
+    public const string CounterUserPushData = "sphene_user_push";
+    public const string CounterUserPushDataTo = "sphene_user_push_to";
+    public const string CounterAuthenticationRequests = "sphene_auth_requests";
+    public const string CounterAuthenticationCacheHits = "sphene_auth_requests_cachehit";
+    public const string CounterAuthenticationFailures = "sphene_auth_requests_fail";
+    public const string CounterAuthenticationSuccesses = "sphene_auth_requests_success";
+    public const string GaugeAuthenticationCacheEntries = "sphene_auth_cache";
+    public const string GaugeGroups = "sphene_groups";
+    public const string GaugeGroupPairs = "sphene_groups_pairs";
+    public const string GaugeFilesUniquePastHour = "sphene_files_unique_past_hour";
+    public const string GaugeFilesUniquePastHourSize = "sphene_files_unique_past_hour_size";
+    public const string GaugeFilesUniquePastDay = "sphene_files_unique_past_day";
+    public const string GaugeFilesUniquePastDaySize = "sphene_files_unique_past_day_size";
+    public const string GaugeCurrentDownloads = "sphene_current_downloads";
+    public const string GaugeQueueFree = "sphene_download_queue_free";
+    public const string GaugeQueueActive = "sphene_download_queue_active";
+    public const string GaugeQueueInactive = "sphene_download_queue_inactive";
+    public const string GaugeDownloadQueue = "sphene_download_queue";
+    public const string GaugeDownloadQueueCancelled = "sphene_download_queue_cancelled";
+    public const string GaugeDownloadPriorityQueue = "sphene_download_priority_queue";
+    public const string GaugeDownloadPriorityQueueCancelled = "sphene_download_priority_queue_cancelled";
+    public const string CounterFileRequests = "sphene_files_requests";
+    public const string CounterFileRequestSize = "sphene_files_request_size";
+    public const string CounterUserPairCacheHit = "sphene_pairscache_hit";
+    public const string CounterUserPairCacheMiss = "sphene_pairscache_miss";
+    public const string GaugeUserPairCacheUsers = "sphene_pairscache_users";
+    public const string GaugeUserPairCacheEntries = "sphene_pairscache_entries";
+    public const string CounterUserPairCacheNewEntries = "sphene_pairscache_new_entries";
+    public const string CounterUserPairCacheUpdatedEntries = "sphene_pairscache_updated_entries";
+    public const string GaugeGposeLobbies = "sphene_gpose_lobbies";
+    public const string GaugeGposeLobbyUsers = "sphene_gpose_lobby_users";
+    public const string GaugeHubConcurrency = "sphene_free_concurrent_hub_calls";
+    public const string GaugeHubQueuedConcurrency = "sphene_free_concurrent_queued_hub_calls";
+}

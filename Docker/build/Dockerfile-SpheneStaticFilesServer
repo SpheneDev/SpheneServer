@@ -1,0 +1,39 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 as BUILD
+
+COPY SpheneAPI /SpheneAPI
+COPY server/SpheneServer/SpheneShared /server/SpheneServer/SpheneShared
+COPY server/SpheneServer/SpheneStaticFilesServer /server/SpheneServer/SpheneStaticFilesServer
+
+# Build SpheneAPI first
+WORKDIR /SpheneAPI/SpheneAPI
+RUN dotnet build \
+        --configuration=Release \
+        --output=/SpheneAPI/bin \
+        Sphene.API.csproj
+
+WORKDIR /server/SpheneServer/SpheneStaticFilesServer/
+
+RUN dotnet publish \
+        --configuration=Release \
+        --os=linux \
+        --output=/build \
+        SpheneStaticFilesServer.csproj
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+
+RUN adduser \
+        --disabled-password \
+        --group \
+        --no-create-home \
+        --quiet \
+        --system \
+        sphene
+
+COPY --from=BUILD /build /opt/SpheneStaticFilesServer
+RUN chown -R sphene:sphene /opt/SpheneStaticFilesServer
+RUN apt-get update; apt-get install curl -y
+
+USER sphene:sphene
+WORKDIR /opt/SpheneStaticFilesServer
+
+CMD ["./SpheneStaticFilesServer"]

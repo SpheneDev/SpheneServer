@@ -1,4 +1,4 @@
 @echo off
 cd ..\..\..\..\
-docker build -t mare-synchronos-services:latest . -f server\Docker\build\Dockerfile-MareSynchronosServices --no-cache --pull --force-rm
+docker build -t sphene-services:latest . -f server\Docker\build\Dockerfile-SpheneServices --no-cache --pull --force-rm
 cd server\Docker\build\windows-local

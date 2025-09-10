@@ -1,2 +1,2 @@
 #!/bin/sh
-docker compose -f compose/mare-standalone.yml -p standalone stop
+docker compose -f compose/sphene-standalone.yml -p standalone stop

@@ -1,14 +1,14 @@
-{
+﻿{
     "ConnectionStrings":  {
-                              "DefaultConnection":  "Host=/var/run/postgresql;Port=5432;Database=mare;Username=mare;Password=secretdevpassword;Keepalive=15;Minimum Pool Size=10;Maximum Pool Size=50;No Reset On Close=true;Max Auto Prepare=50;Enlist=false"
+                              "DefaultConnection":  "Host=/var/run/postgresql;Port=5432;Database=sphene;Username=sphene;Password=secretdevpassword;Keepalive=15;Minimum Pool Size=10;Maximum Pool Size=50;No Reset On Close=true;Max Auto Prepare=50;Enlist=false"
                           },
     "Logging":  {
                     "LogLevel":  {
                                      "Default":  "Warning",
                                      "Microsoft":  "Warning",
                                      "Microsoft.Hosting.Lifetime":  "Information",
-                                     "MareSynchronosServices":  "Information",
-                                     "MareSynchronosShared":  "Information",
+                                     "SpheneServices":  "Information",
+                                     "SpheneShared":  "Information",
                                      "System.IO":  "Information"
                                  },
                     "File":  {
@@ -19,21 +19,21 @@
                                  "MaxFileSize":  104857600,
                                  "Files":  [
                                                {
-                                                   "Path":  "\u003cdate:yyyy\u003e/\u003cdate:MM\u003e/\u003cdate:dd\u003e/mare-\u003cdate:HH\u003e-\u003ccounter:0000\u003e.log"
+                                                   "Path":  "\u003cdate:yyyy\u003e/\u003cdate:MM\u003e/\u003cdate:dd\u003e/sphene-\u003cdate:HH\u003e-\u003ccounter:0000\u003e.log"
                                                }
                                            ]
                              }
                 },
-    "MareSynchronos":  {
-                           "DbContextPoolSize":  512,
-                           "ShardName":  "AuthServices",
-                           "MetricsPort":  6150,
-                           "Jwt":  "teststringteststringteststringteststringteststringteststringteststringteststringteststringteststring",
-                           "RedisConnectionString":  "redis,password=secretredispassword",
-                           "FailedAuthForTempBan":  5,
-                           "UseGeoIP":  false,
-                           "GeoIPDbCityFile":  ""
-                       },
+    "Sphene":  {
+                   "DbContextPoolSize":  512,
+                   "ShardName":  "AuthServices",
+                   "MetricsPort":  6150,
+                   "Jwt":  "teststringteststringteststringteststringteststringteststringteststringteststringteststringteststring",
+                   "RedisConnectionString":  "redis:6379,password=secretredispassword,abortConnect=false",
+                   "FailedAuthForTempBan":  5,
+                   "UseGeoIP":  false,
+                   "GeoIPDbCityFile":  ""
+               },
     "AllowedHosts":  "*",
     "Kestrel":  {
                     "Endpoints":  {

@@ -1,30 +1,30 @@
-# Mare Synchronos Environment Configuration
+﻿# Sphene Synchronos Environment Configuration
 
-This file explains the usage of environment variables in the `.env` file for the Mare Synchronos Docker setup.
+This file explains the usage of environment variables in the `.env` file for the Sphene Synchronos Docker setup.
 
 ## Overview
 
-The `.env` file contains all important configuration values for the Mare Synchronos system. These values are used by the Docker Compose files and application configurations.
+The `.env` file contains all important configuration values for the Sphene Synchronos system. These values are used by the Docker Compose files and application configurations.
 
 ## Important Notes
 
 ### For local development:
 - The default values in the `.env` file are optimized for local development
-- `DEV_MARE_CDNURL` should be set to `http://localhost:6200`
+- `DEV_SPHENE_CDNURL` should be set to `http://localhost:6200`
 - Database and Redis passwords can use the default values
 
 ### For production environments:
 - **IMPORTANT**: `JWT_SECRET` must be changed! Use a secure, random string with at least 64 characters
 - `POSTGRES_PASSWORD` and `REDIS_PASSWORD` should use secure, unique passwords
-- `DEV_MARE_CDNURL` should point to the public URL of your server
+- `DEV_SPHENE_CDNURL` should point to the public URL of your server
 
 ## Configuration Categories
 
 ### Database Configuration
 - `POSTGRES_HOST`: PostgreSQL server host (default: localhost)
 - `POSTGRES_PORT`: PostgreSQL server port (default: 5432)
-- `POSTGRES_DB`: Database name (default: mare)
-- `POSTGRES_USER`: Database user (default: mare)
+- `POSTGRES_DB`: Database name (default: sphene)
+- `POSTGRES_USER`: Database user (default: sphene)
 - `POSTGRES_PASSWORD`: Database password (default: secretdevpassword)
 
 ### Redis Configuration
@@ -48,12 +48,12 @@ The `.env` file contains all important configuration values for the Mare Synchro
 - `USE_COLD_STORAGE`: Enable cold storage (default: false)
 
 ### Optional: Discord Integration
-- `DEV_MARE_DISCORDTOKEN`: Discord bot token (optional)
-- `DEV_MARE_DISCORDCHANNEL`: Discord channel ID (optional)
-- `DEV_MARE_DISCORDROLE`: Discord role ID (optional)
+- `DEV_SPHENE_DISCORDTOKEN`: Discord bot token (optional)
+- `DEV_SPHENE_DISCORDCHANNEL`: Discord channel ID (optional)
+- `DEV_SPHENE_DISCORDROLE`: Discord role ID (optional)
 
 ### Optional: External APIs
-- `DEV_MARE_XIVAPIKEY`: XIVAPI key for FFXIV integration (optional)
+- `DEV_SPHENE_XIVAPIKEY`: XIVAPI key for FFXIV integration (optional)
 
 ## Usage
 
@@ -61,7 +61,7 @@ The `.env` file contains all important configuration values for the Mare Synchro
 2. For production environments:
    - Change `JWT_SECRET` to a secure value
    - Set secure passwords for `POSTGRES_PASSWORD` and `REDIS_PASSWORD`
-   - Configure `DEV_MARE_CDNURL` with your public URL
+   - Configure `DEV_SPHENE_CDNURL` with your public URL
 3. Start the system with `docker-compose up`
 
 ## Fallback Behavior
@@ -69,7 +69,7 @@ The `.env` file contains all important configuration values for the Mare Synchro
 When environment variables are not set, default values are used:
 - In Docker Compose files: `${VARIABLE_NAME:-default_value}`
 - In appsettings.json: Environment variables are replaced by placeholders
-- In MareDbContext.cs: Fallback to environment variables or default values
+- In SpheneDbContext.cs: Fallback to environment variables or default values
 
 ## Security Notes
 

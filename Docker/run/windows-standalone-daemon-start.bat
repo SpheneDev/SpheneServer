@@ -1,2 +1,2 @@
 @echo off
-docker compose -f compose\mare-standalone.yml -p standalone up -d
+docker compose -f compose\sphene-standalone.yml -p standalone up -d

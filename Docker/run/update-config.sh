@@ -12,7 +12,7 @@ source .env
 # Function to update JSON files
 update_json_file() {
     local file=$1
-    local connection_string="Host=${POSTGRES_HOST:-postgres};Port=${POSTGRES_PORT:-5432};Database=${POSTGRES_DB:-mare};Username=${POSTGRES_USER:-mare};Password=${POSTGRES_PASSWORD:-mare}"
+    local connection_string="Host=${POSTGRES_HOST:-postgres};Port=${POSTGRES_PORT:-5432};Database=${POSTGRES_DB:-sphene};Username=${POSTGRES_USER:-sphene};Password=${POSTGRES_PASSWORD:-sphene}"
     
     if [ -f "$file" ]; then
         # Use sed to replace the connection string
