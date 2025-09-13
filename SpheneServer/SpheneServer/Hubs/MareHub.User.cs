@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Sphene.API.Data;
@@ -496,4 +496,62 @@ public partial class SpheneHub
 
     private ClientPair OppositeEntry(string otherUID) =>
                                     DbContext.ClientPairs.AsNoTracking().SingleOrDefault(w => w.User.UID == otherUID && w.OtherUser.UID == UserUID);
+
+    public async Task UserUpdateAckYou(bool ackYou)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(ackYou));
+
+        var user = await DbContext.Users.SingleAsync(u => u.UID == UserUID).ConfigureAwait(false);
+        var allPairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+        var onlinePairs = await GetOnlineUsers(allPairedUsers).ConfigureAwait(false);
+
+        // Update own AckYou status in own row where this user is UserUID
+        var ownPermissions = await DbContext.Permissions
+            .Where(p => p.UserUID == UserUID)
+            .ToListAsync().ConfigureAwait(false);
+        
+        foreach (var permission in ownPermissions)
+        {
+            permission.AckYou = ackYou;
+        }
+
+        // Update AckOther status in other users' rows where this user is OtherUserUID
+        // This means: when Player A sets AckYou=true, Player B's row gets AckOther=true
+        var otherUsersPermissions = await DbContext.Permissions
+            .Where(p => p.OtherUserUID == UserUID)
+            .ToListAsync().ConfigureAwait(false);
+        
+        foreach (var permission in otherUsersPermissions)
+        {
+            permission.AckOther = ackYou;
+        }
+
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+
+        // Send updates to all online paired users about their updated AckOther value
+        // When Player A changes AckYou, Player B's AckOther changes, so we notify Player B with their own permissions
+        foreach (var pair in onlinePairs)
+        {
+            var pairData = await GetPairInfo(pair.Key, UserUID).ConfigureAwait(false);
+            if (pairData?.OwnPermissions != null)
+            {
+                await Clients.User(pair.Key).Client_UserAckYouUpdate(
+                    new UserPermissionsDto(user.ToUserData(), pairData.OwnPermissions.ToUserPermissions())).ConfigureAwait(false);
+            }
+        }
+
+        // Notify caller about their own AckYou update for each paired user
+        // Send updated permissions for each pair so the UI can update correctly
+        foreach (var pair in allPairedUsers)
+        {
+            var callerPairData = await GetPairInfo(UserUID, pair).ConfigureAwait(false);
+            if (callerPairData?.OwnPermissions != null)
+            {
+                await Clients.Caller.Client_UserAckYouUpdate(
+                    new UserPermissionsDto(new UserData(pair, string.Empty), callerPairData.OwnPermissions.ToUserPermissions())).ConfigureAwait(false);
+            }
+        }
+    }
+
+    // UserUpdateAckOther method removed - AckOther is controlled by other player's AckYou
 }

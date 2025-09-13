@@ -261,6 +261,7 @@ public class Startup
                 builder.MigrationsAssembly("SpheneShared");
             }).UseSnakeCaseNamingConvention();
             options.EnableThreadSafetyChecks(false);
+            options.ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         }, spheneConfig.GetValue(nameof(SpheneConfigurationBase.DbContextPoolSize), 1024));
         services.AddDbContextFactory<SpheneDbContext>(options =>
         {
@@ -270,6 +271,7 @@ public class Startup
                 builder.MigrationsAssembly("SpheneShared");
             }).UseSnakeCaseNamingConvention();
             options.EnableThreadSafetyChecks(false);
+            options.ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         });
     }
 

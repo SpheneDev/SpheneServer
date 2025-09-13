@@ -67,6 +67,8 @@ public static class Extensions
         perm.SetDisableAnimations(permissions.DisableAnimations);
         perm.SetDisableSounds(permissions.DisableSounds);
         perm.SetDisableVFX(permissions.DisableVFX);
+        perm.SetAckYou(permissions.AckYou);
+        perm.SetAckOther(permissions.AckOther);
         if (setSticky)
             perm.SetSticky(permissions.Sticky);
         return perm;

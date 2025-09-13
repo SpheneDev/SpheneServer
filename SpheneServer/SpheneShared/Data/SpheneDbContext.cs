@@ -29,6 +29,7 @@ public class SpheneDbContext : DbContext
             builder.MigrationsAssembly("SpheneShared");
         }).UseSnakeCaseNamingConvention();
         optionsBuilder.EnableThreadSafetyChecks(false);
+        optionsBuilder.ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
 
         base.OnConfiguring(optionsBuilder);
     }

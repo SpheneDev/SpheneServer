@@ -1,6 +1,7 @@
-﻿using Sphene.API.Data;
+using Sphene.API.Data;
 using Sphene.API.Data.Enum;
 using Sphene.API.Dto;
+using Sphene.API.Dto.User;
 using Sphene.API.SignalR;
 using SpheneServer.Services;
 using SpheneServer.Utils;
@@ -283,4 +284,11 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
             _acknowledgmentSenders.TryRemove(key, out _);
         }
     }
+
+    public async Task Client_UserAckYouUpdate(UserPermissionsDto dto)
+    {
+        await Clients.Caller.Client_UserAckYouUpdate(dto).ConfigureAwait(false);
+    }
+
+    // Client_UserAckOtherUpdate method removed - AckOther is controlled by other player's AckYou
 }

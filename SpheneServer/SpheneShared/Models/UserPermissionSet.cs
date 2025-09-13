@@ -15,4 +15,6 @@ public class UserPermissionSet
     public bool DisableAnimations { get; set; } = false;
     public bool DisableVFX { get; set; } = false;
     public bool DisableSounds { get; set; } = false;
+    public bool AckYou { get; set; } = false;
+    public bool AckOther { get; set; } = false;
 }

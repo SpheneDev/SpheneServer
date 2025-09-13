@@ -77,7 +77,10 @@ public class Program
                 }
                 else
                 {
+                    var basePath = AppContext.BaseDirectory;
+                    config.SetBasePath(basePath);
                     config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+                    config.AddJsonFile($"appsettings.{ctx.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true);
                 }
 
                 config.AddEnvironmentVariables();
