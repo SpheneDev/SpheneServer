@@ -62,33 +62,46 @@ public sealed class ConcurrencyFilter : IHubFilter, IDisposable
         });
     }
 
-    public async ValueTask<object> InvokeMethodAsync(
-    HubInvocationContext invocationContext, Func<HubInvocationContext, ValueTask<object>> next)
+    public async ValueTask<object?> InvokeMethodAsync(
+    HubInvocationContext invocationContext, Func<HubInvocationContext, ValueTask<object?>> next)
     {
         if (string.Equals(invocationContext.HubMethodName, nameof(SpheneHub.CheckClientHealth), StringComparison.Ordinal))
         {
             return await next(invocationContext).ConfigureAwait(false);
         }
 
-        var ct = invocationContext.Context.ConnectionAborted;
-        RateLimitLease lease;
+        // Create a timeout cancellation token (30 seconds for hub methods)
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            invocationContext.Context.ConnectionAborted, 
+            timeoutCts.Token);
+        
+        var lease = await _limiter.AcquireAsync(1, combinedCts.Token).ConfigureAwait(false);
+        
         try
         {
-            lease = await _limiter.AcquireAsync(1, ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-
-        if (!lease.IsAcquired)
-        {
-            throw new HubException("Concurrency limit exceeded. Try again later.");
-        }
-
-        using (lease)
-        {
+            if (!lease.IsAcquired)
+            {
+                throw new HubException("Concurrency limit exceeded. Try again later.");
+            }
+            
             return await next(invocationContext).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (timeoutCts.Token.IsCancellationRequested)
+        {
+            throw new HubException($"Hub method '{invocationContext.HubMethodName}' timed out after 30 seconds.");
+        }
+        catch (OperationCanceledException ex) when (invocationContext.Context.ConnectionAborted.IsCancellationRequested)
+        {
+            throw new TaskCanceledException("Operation was cancelled due to connection closure.", ex);
+        }
+        catch (OperationCanceledException ex)
+        {
+            throw new TaskCanceledException("Operation was cancelled.", ex);
+        }
+        finally
+        {
+            lease.Dispose();
         }
     }
 

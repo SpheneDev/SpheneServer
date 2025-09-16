@@ -284,6 +284,16 @@ public partial class SpheneHub
         
         _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] UserPushData - Using acknowledgment ID:", acknowledgmentId, "for sender:", UserUID));
         
+        // Remove old acknowledgment for this sender if it exists
+        if (_userLatestAcknowledgments.TryGetValue(UserUID, out var oldAckId))
+        {
+            _acknowledgmentSenders.TryRemove(oldAckId, out _);
+            _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] UserPushData - Removed old acknowledgment:", oldAckId, "for sender:", UserUID));
+        }
+        
+        // Store the latest acknowledgment ID for this sender
+        _userLatestAcknowledgments.AddOrUpdate(UserUID, acknowledgmentId, (key, oldValue) => acknowledgmentId);
+        
         // Store the mapping between acknowledgment ID and sender UID
         var added = _acknowledgmentSenders.TryAdd(acknowledgmentId, UserUID);
         _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] UserPushData - Stored acknowledgment mapping:", acknowledgmentId, "->", UserUID, "Added:", added));
@@ -318,6 +328,17 @@ public partial class SpheneHub
         // Find the original sender of the character data based on acknowledgment ID
         if (_acknowledgmentSenders.TryGetValue(acknowledgmentDto.AcknowledgmentId, out var originalSenderUid))
         {
+            // Validate that the acknowledging user has a pair relationship with the original sender
+            var pairExists = await DbContext.ClientPairs.AsNoTracking()
+                .AnyAsync(p => (p.UserUID == UserUID && p.OtherUserUID == originalSenderUid) ||
+                              (p.UserUID == originalSenderUid && p.OtherUserUID == UserUID))
+                .ConfigureAwait(false);
+            
+            if (!pairExists)
+            {
+                _logger.LogCallWarning(SpheneHubLogger.Args("[DEBUG] User", UserUID, "attempted to send acknowledgment for AckId", acknowledgmentDto.AcknowledgmentId, "but has no pair relationship with sender", originalSenderUid));
+                return;
+            }
             _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] Found original sender", originalSenderUid, "for AckId", acknowledgmentDto.AcknowledgmentId, "forwarding acknowledgment"));
             
             // Create a new acknowledgment DTO with the current user (recipient) as the acknowledging user
@@ -499,57 +520,73 @@ public partial class SpheneHub
 
     public async Task UserUpdateAckYou(bool ackYou)
     {
-        _logger.LogCallInfo(SpheneHubLogger.Args(ackYou));
-
+        // Get user and paired users data sequentially to avoid database concurrency issues
         var user = await DbContext.Users.SingleAsync(u => u.UID == UserUID).ConfigureAwait(false);
         var allPairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
         var onlinePairs = await GetOnlineUsers(allPairedUsers).ConfigureAwait(false);
 
-        // Update own AckYou status in own row where this user is UserUID
-        var ownPermissions = await DbContext.Permissions
-            .Where(p => p.UserUID == UserUID)
+        // Get all relevant permissions in a single query
+        var allPermissions = await DbContext.Permissions
+            .Where(p => p.UserUID == UserUID || p.OtherUserUID == UserUID)
             .ToListAsync().ConfigureAwait(false);
-        
+            
+        var ownPermissions = allPermissions.Where(p => p.UserUID == UserUID).ToList();
+        var otherUsersPermissions = allPermissions.Where(p => p.OtherUserUID == UserUID).ToList();
+            
+        // Check if any permission actually needs to be updated
+        bool statusChanged = ownPermissions.Any(p => p.AckYou != ackYou);
+        if (!statusChanged)
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("NO_CHANGE", UserUID, ackYou));
+            return; // No change needed, avoid unnecessary database updates and network traffic
+        }
+
+        _logger.LogCallInfo(SpheneHubLogger.Args(ackYou));
+
+        // Update permissions in memory
         foreach (var permission in ownPermissions)
         {
             permission.AckYou = ackYou;
         }
-
-        // Update AckOther status in other users' rows where this user is OtherUserUID
-        // This means: when Player A sets AckYou=true, Player B's row gets AckOther=true
-        var otherUsersPermissions = await DbContext.Permissions
-            .Where(p => p.OtherUserUID == UserUID)
-            .ToListAsync().ConfigureAwait(false);
         
         foreach (var permission in otherUsersPermissions)
         {
             permission.AckOther = ackYou;
         }
 
+        // Save all changes in a single transaction
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
 
+        // Get all pair information in a single batch operation to avoid database concurrency issues
+        var allPairInfo = await GetAllPairInfo(UserUID).ConfigureAwait(false);
+        
+        // Prepare notification tasks but don't await them individually
+        var notificationTasks = new List<Task>();
+        
         // Send updates to all online paired users about their updated AckOther value
-        // When Player A changes AckYou, Player B's AckOther changes, so we notify Player B with their own permissions
         foreach (var pair in onlinePairs)
         {
-            var pairData = await GetPairInfo(pair.Key, UserUID).ConfigureAwait(false);
-            if (pairData?.OwnPermissions != null)
+            if (allPairInfo.TryGetValue(pair.Key, out var pairData) && pairData?.OtherPermissions != null)
             {
-                await Clients.User(pair.Key).Client_UserAckYouUpdate(
-                    new UserPermissionsDto(user.ToUserData(), pairData.OwnPermissions.ToUserPermissions())).ConfigureAwait(false);
+                notificationTasks.Add(Clients.User(pair.Key).Client_UserAckYouUpdate(
+                    new UserPermissionsDto(user.ToUserData(), pairData.OtherPermissions.ToUserPermissions())));
             }
         }
 
-        // Notify caller about their own AckYou update for each paired user
-        // Send updated permissions for each pair so the UI can update correctly
-        foreach (var pair in allPairedUsers)
+        // Notify caller about their own AckYou update for each visible paired user only
+        foreach (var pair in onlinePairs)
         {
-            var callerPairData = await GetPairInfo(UserUID, pair).ConfigureAwait(false);
-            if (callerPairData?.OwnPermissions != null)
+            if (allPairInfo.TryGetValue(pair.Key, out var callerPairData) && callerPairData?.OwnPermissions != null)
             {
-                await Clients.Caller.Client_UserAckYouUpdate(
-                    new UserPermissionsDto(new UserData(pair, string.Empty), callerPairData.OwnPermissions.ToUserPermissions())).ConfigureAwait(false);
+                notificationTasks.Add(Clients.Caller.Client_UserAckYouUpdate(
+                    new UserPermissionsDto(new UserData(pair.Key, string.Empty), callerPairData.OwnPermissions.ToUserPermissions())));
             }
+        }
+        
+        // Execute all notifications in parallel
+        if (notificationTasks.Count > 0)
+        {
+            await Task.WhenAll(notificationTasks).ConfigureAwait(false);
         }
     }
 
