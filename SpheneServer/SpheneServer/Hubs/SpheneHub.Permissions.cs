@@ -65,6 +65,8 @@ public partial class SpheneHub
             prevPermissions.DisableAnimations = newPerm.IsDisableAnimations();
             prevPermissions.DisableSounds = newPerm.IsDisableSounds();
             prevPermissions.DisableVFX = newPerm.IsDisableVFX();
+            prevPermissions.AckYou = newPerm.IsAckYou();
+            // AckOther removed - partners read AckYou directly
             prevPermissions.Sticky = newPerm.IsSticky() || setSticky;
             DbContext.Update(prevPermissions);
 

@@ -282,13 +282,11 @@ public partial class SpheneHub
         // Use client-provided acknowledgment ID or generate a new one if not provided
         var acknowledgmentId = !string.IsNullOrEmpty(dto.AcknowledgmentId) ? dto.AcknowledgmentId : Guid.NewGuid().ToString();
         
-        _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] UserPushData - Using acknowledgment ID:", acknowledgmentId, "for sender:", UserUID));
-        
         // Remove old acknowledgment for this sender if it exists
-        if (_userLatestAcknowledgments.TryGetValue(UserUID, out var oldAckId))
+        string? oldAckId = null;
+        if (_userLatestAcknowledgments.TryGetValue(UserUID, out oldAckId))
         {
             _acknowledgmentSenders.TryRemove(oldAckId, out _);
-            _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] UserPushData - Removed old acknowledgment:", oldAckId, "for sender:", UserUID));
         }
         
         // Store the latest acknowledgment ID for this sender
@@ -296,8 +294,9 @@ public partial class SpheneHub
         
         // Store the mapping between acknowledgment ID and sender UID
         var added = _acknowledgmentSenders.TryAdd(acknowledgmentId, UserUID);
-        _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] UserPushData - Stored acknowledgment mapping:", acknowledgmentId, "->", UserUID, "Added:", added));
-        _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] UserPushData - Total acknowledgment mappings:", _acknowledgmentSenders.Count));
+        
+        // Single compact log line with all acknowledgment info
+        _logger.LogCallInfo(SpheneHubLogger.Args("AckId:", acknowledgmentId, "OldAck:", oldAckId ?? "None", "Recipients:", recipientUids.Count, "TotalMappings:", _acknowledgmentSenders.Count));
         
         var characterDataDto = new OnlineUserCharaDataDto(new UserData(UserUID), dto.CharaData)
         {
@@ -316,14 +315,7 @@ public partial class SpheneHub
     [Authorize(Policy = "Identified")]
     public async Task UserSendCharacterDataAcknowledgment(CharacterDataAcknowledgmentDto acknowledgmentDto)
     {
-        _logger.LogCallInfo(SpheneHubLogger.Args(acknowledgmentDto.AcknowledgmentId, acknowledgmentDto.Success));
-
-        // Debug: Log all current acknowledgment senders
-        _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] Current _acknowledgmentSenders count:", _acknowledgmentSenders.Count));
-        foreach (var kvp in _acknowledgmentSenders)
-        {
-            _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] AckId:", kvp.Key, "-> Sender:", kvp.Value));
-        }
+        _logger.LogCallInfo(SpheneHubLogger.Args(acknowledgmentDto.AcknowledgmentId, acknowledgmentDto.Success, "TotalMappings:", _acknowledgmentSenders.Count));
 
         // Find the original sender of the character data based on acknowledgment ID
         if (_acknowledgmentSenders.TryGetValue(acknowledgmentDto.AcknowledgmentId, out var originalSenderUid))
@@ -336,10 +328,9 @@ public partial class SpheneHub
             
             if (!pairExists)
             {
-                _logger.LogCallWarning(SpheneHubLogger.Args("[DEBUG] User", UserUID, "attempted to send acknowledgment for AckId", acknowledgmentDto.AcknowledgmentId, "but has no pair relationship with sender", originalSenderUid));
+                _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "AckId:", acknowledgmentDto.AcknowledgmentId, "Sender:", originalSenderUid));
                 return;
             }
-            _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] Found original sender", originalSenderUid, "for AckId", acknowledgmentDto.AcknowledgmentId, "forwarding acknowledgment"));
             
             // Create a new acknowledgment DTO with the current user (recipient) as the acknowledging user
             var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.AcknowledgmentId)
@@ -349,22 +340,17 @@ public partial class SpheneHub
                 AcknowledgedAt = acknowledgmentDto.AcknowledgedAt
             };
             
-            _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] Forwarding acknowledgment with recipient UID", UserUID, "instead of original", acknowledgmentDto.User.UID));
-            
             // Send acknowledgment only to the original sender
             await Clients.User(originalSenderUid).Client_UserReceiveCharacterDataAcknowledgment(forwardedAcknowledgment).ConfigureAwait(false);
-            
-            _logger.LogCallInfo(SpheneHubLogger.Args("[DEBUG] Successfully forwarded acknowledgment to", originalSenderUid, "for AckId", acknowledgmentDto.AcknowledgmentId));
             
             // Clean up the acknowledgment mapping after successful delivery
             _acknowledgmentSenders.TryRemove(acknowledgmentDto.AcknowledgmentId, out _);
             
-            _logger.LogCallInfo(SpheneHubLogger.Args(acknowledgmentDto.AcknowledgmentId, originalSenderUid));
+            _logger.LogCallInfo(SpheneHubLogger.Args("Forwarded to:", originalSenderUid, "AckId:", acknowledgmentDto.AcknowledgmentId));
         }
         else
         {
-            _logger.LogCallWarning(SpheneHubLogger.Args("[DEBUG] Could not find original sender for AckId", acknowledgmentDto.AcknowledgmentId, "Available AckIds:", string.Join(", ", _acknowledgmentSenders.Keys)));
-            _logger.LogCallWarning(SpheneHubLogger.Args(acknowledgmentDto.AcknowledgmentId));
+            _logger.LogCallWarning(SpheneHubLogger.Args("No sender found for AckId:", acknowledgmentDto.AcknowledgmentId, "Available:", _acknowledgmentSenders.Count));
         }
         
         _SpheneMetrics.IncCounter(MetricsAPI.CounterUserPushData);
@@ -543,16 +529,13 @@ public partial class SpheneHub
 
         _logger.LogCallInfo(SpheneHubLogger.Args(ackYou));
 
-        // Update permissions in memory
+        // Update permissions in memory - only update own AckYou
         foreach (var permission in ownPermissions)
         {
             permission.AckYou = ackYou;
         }
         
-        foreach (var permission in otherUsersPermissions)
-        {
-            permission.AckOther = ackYou;
-        }
+        // No longer update AckOther - partners read AckYou directly
 
         // Save all changes in a single transaction
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
