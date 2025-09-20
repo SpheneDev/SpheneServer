@@ -279,28 +279,18 @@ public partial class SpheneHub
 
         _logger.LogCallInfo(SpheneHubLogger.Args(recipientUids.Count));
 
-        // Use client-provided acknowledgment ID or generate a new one if not provided
-        var acknowledgmentId = !string.IsNullOrEmpty(dto.AcknowledgmentId) ? dto.AcknowledgmentId : Guid.NewGuid().ToString();
+        // Get data hash from character data
+        var dataHash = dto.CharaData.DataHash.Value;
         
-        // Remove old acknowledgment for this sender if it exists
-        string? oldAckId = null;
-        if (_userLatestAcknowledgments.TryGetValue(UserUID, out oldAckId))
-        {
-            _acknowledgmentSenders.TryRemove(oldAckId, out _);
-        }
+        // Store the mapping of hash to sender UID for acknowledgment lookup
+        _acknowledgmentSenders.AddOrUpdate(dataHash, UserUID, (key, oldValue) => UserUID);
         
-        // Store the latest acknowledgment ID for this sender
-        _userLatestAcknowledgments.AddOrUpdate(UserUID, acknowledgmentId, (key, oldValue) => acknowledgmentId);
-        
-        // Store the mapping between acknowledgment ID and sender UID
-        var added = _acknowledgmentSenders.TryAdd(acknowledgmentId, UserUID);
-        
-        // Single compact log line with all acknowledgment info
-        _logger.LogCallInfo(SpheneHubLogger.Args("AckId:", acknowledgmentId, "OldAck:", oldAckId ?? "None", "Recipients:", recipientUids.Count, "TotalMappings:", _acknowledgmentSenders.Count));
+        // Log hash-based acknowledgment info
+        _logger.LogCallInfo(SpheneHubLogger.Args("Hash:", dataHash[..8], "Recipients:", recipientUids.Count));
         
         var characterDataDto = new OnlineUserCharaDataDto(new UserData(UserUID), dto.CharaData)
         {
-            AcknowledgmentId = acknowledgmentId,
+            DataHash = dataHash,
             RequiresAcknowledgment = true
         };
 
@@ -315,10 +305,8 @@ public partial class SpheneHub
     [Authorize(Policy = "Identified")]
     public async Task UserSendCharacterDataAcknowledgment(CharacterDataAcknowledgmentDto acknowledgmentDto)
     {
-        _logger.LogCallInfo(SpheneHubLogger.Args(acknowledgmentDto.AcknowledgmentId, acknowledgmentDto.Success, "TotalMappings:", _acknowledgmentSenders.Count));
-
-        // Find the original sender of the character data based on acknowledgment ID
-        if (_acknowledgmentSenders.TryGetValue(acknowledgmentDto.AcknowledgmentId, out var originalSenderUid))
+        // Find the original sender of the character data based on hash
+        if (_acknowledgmentSenders.TryGetValue(acknowledgmentDto.DataHash, out var originalSenderUid))
         {
             // Validate that the acknowledging user has a pair relationship with the original sender
             var pairExists = await DbContext.ClientPairs.AsNoTracking()
@@ -328,12 +316,12 @@ public partial class SpheneHub
             
             if (!pairExists)
             {
-                _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "AckId:", acknowledgmentDto.AcknowledgmentId, "Sender:", originalSenderUid));
+                _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "Hash:", acknowledgmentDto.DataHash[..8], "Sender:", originalSenderUid));
                 return;
             }
             
             // Create a new acknowledgment DTO with the current user (recipient) as the acknowledging user
-            var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.AcknowledgmentId)
+            var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.DataHash)
             {
                 Success = acknowledgmentDto.Success,
                 ErrorMessage = acknowledgmentDto.ErrorMessage,
@@ -344,13 +332,7 @@ public partial class SpheneHub
             await Clients.User(originalSenderUid).Client_UserReceiveCharacterDataAcknowledgment(forwardedAcknowledgment).ConfigureAwait(false);
             
             // Clean up the acknowledgment mapping after successful delivery
-            _acknowledgmentSenders.TryRemove(acknowledgmentDto.AcknowledgmentId, out _);
-            
-            _logger.LogCallInfo(SpheneHubLogger.Args("Forwarded to:", originalSenderUid, "AckId:", acknowledgmentDto.AcknowledgmentId));
-        }
-        else
-        {
-            _logger.LogCallWarning(SpheneHubLogger.Args("No sender found for AckId:", acknowledgmentDto.AcknowledgmentId, "Available:", _acknowledgmentSenders.Count));
+            _acknowledgmentSenders.TryRemove(acknowledgmentDto.DataHash, out _);
         }
         
         _SpheneMetrics.IncCounter(MetricsAPI.CounterUserPushData);

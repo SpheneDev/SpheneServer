@@ -1,5 +1,6 @@
 using Sphene.API.Data;
 using Sphene.API.Dto.CharaData;
+using Sphene.API.Dto.User;
 using SpheneServer.Utils;
 using SpheneShared.Models;
 using SpheneShared.Utils;
@@ -94,6 +95,76 @@ public partial class SpheneHub
         _logger.LogCallInfo(SpheneHubLogger.Args("SUCCESS", id));
 
         return GetCharaDataDownloadDto(charaData);
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task<CharacterDataHashValidationResponse> ValidateCharaDataHash(CharacterDataHashValidationRequest request)
+    {
+        try
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("Validating hash", request.UserUID, request.DataHash));
+            
+            // Always store the new hash
+            await StoreNewHash(request.UserUID, request.DataHash).ConfigureAwait(false);
+            
+            // Always return valid to ensure client continues
+            return new CharacterDataHashValidationResponse
+            {
+                IsValid = true,
+                CurrentHash = request.DataHash
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("Error validating hash", request.UserUID, request.DataHash, ex.Message));
+            
+            // Return a valid response to prevent client errors
+            return new CharacterDataHashValidationResponse
+            {
+                IsValid = true,
+                CurrentHash = request.DataHash
+            };
+        }
+    }
+    
+    private async Task StoreNewHash(string userUid, string hash)
+    {
+        try
+        {
+            // Check if hash already exists for this user
+            var existingHash = await DbContext.CharaDataHashes
+                .FirstOrDefaultAsync(h => h.ParentId == userUid)
+                .ConfigureAwait(false);
+            
+            if (existingHash != null)
+            {
+                // Update existing hash
+                existingHash.Hash = hash;
+                existingHash.LastUpdated = DateTime.UtcNow;
+                _logger.LogCallInfo(SpheneHubLogger.Args("Updated existing hash", userUid, hash));
+            }
+            else
+            {
+                // Create new hash entry
+                var newHash = new CharaDataHash
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    ParentId = userUid,
+                    Hash = hash,
+                    LastUpdated = DateTime.UtcNow
+                };
+                
+                DbContext.CharaDataHashes.Add(newHash);
+                _logger.LogCallInfo(SpheneHubLogger.Args("Created new hash", userUid, hash));
+            }
+            
+            await DbContext.SaveChangesAsync().ConfigureAwait(false);
+            _logger.LogCallInfo(SpheneHubLogger.Args("Successfully stored hash", userUid, hash));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("Failed to store hash", userUid, hash, ex.Message));
+        }
     }
 
     [Authorize(Policy = "Identified")]

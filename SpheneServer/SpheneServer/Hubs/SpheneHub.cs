@@ -23,9 +23,7 @@ namespace SpheneServer.Hubs;
 public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
 {
     private static readonly ConcurrentDictionary<string, string> _userConnections = new(StringComparer.Ordinal);
-    // Store latest acknowledgment ID per user pair (sender -> latest AckId)
-    private static readonly ConcurrentDictionary<string, string> _userLatestAcknowledgments = new(StringComparer.Ordinal);
-    // Map acknowledgment IDs to sender UIDs for lookup
+    // Map hash keys to sender UIDs for acknowledgment lookup
     private static readonly ConcurrentDictionary<string, string> _acknowledgmentSenders = new(StringComparer.Ordinal);
     private readonly SpheneMetrics _SpheneMetrics;
     private readonly SystemInfoService _systemInfoService;
@@ -269,14 +267,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     // Cleanup acknowledgment mappings for a specific user
     private static void CleanupAcknowledgmentMappingsForUser(string userUid)
     {
-        // Remove from latest acknowledgments tracking
-        if (_userLatestAcknowledgments.TryRemove(userUid, out var latestAckId))
-        {
-            // Also remove the corresponding entry from acknowledgment senders
-            _acknowledgmentSenders.TryRemove(latestAckId, out _);
-        }
-        
-        // Clean up any remaining entries in acknowledgment senders for this user
+        // Clean up any acknowledgment mappings for this user
         var keysToRemove = new List<string>();
         
         foreach (var kvp in _acknowledgmentSenders)

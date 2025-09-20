@@ -93,3 +93,12 @@ public class CharaDataPose
     public string PoseData { get; set; }
     public string WorldData { get; set; }
 }
+
+public class CharaDataHash
+{
+    public string Id { get; set; }
+    public virtual CharaData Parent { get; set; }
+    public string ParentId { get; set; }
+    public string Hash { get; set; }
+    public DateTime LastUpdated { get; set; }
+}

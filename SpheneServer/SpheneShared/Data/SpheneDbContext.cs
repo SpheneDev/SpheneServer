@@ -1,4 +1,4 @@
-﻿using SpheneShared.Models;
+using SpheneShared.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace SpheneShared.Data;
@@ -61,6 +61,7 @@ public class SpheneDbContext : DbContext
     public DbSet<CharaDataOriginalFile> CharaDataOriginalFiles { get; set; }
     public DbSet<CharaDataPose> CharaDataPoses { get; set; }
     public DbSet<CharaDataAllowance> CharaDataAllowances { get; set; }
+    public DbSet<CharaDataHash> CharaDataHashes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -98,6 +99,9 @@ public class SpheneDbContext : DbContext
         mb.Entity<UserPermissionSet>().HasKey(u => new { u.UserUID, u.OtherUserUID });
         mb.Entity<UserPermissionSet>().HasIndex(c => c.UserUID);
         mb.Entity<UserPermissionSet>().HasIndex(c => c.OtherUserUID);
+        mb.Entity<CharaDataHash>().ToTable("chara_data_hashes");
+        mb.Entity<CharaDataHash>().HasKey(c => c.Id);
+        mb.Entity<CharaDataHash>().HasIndex(c => c.ParentId);
         mb.Entity<UserPermissionSet>().HasIndex(c => new { c.UserUID, c.OtherUserUID, c.IsPaused });
         mb.Entity<GroupPairPreferredPermission>().ToTable("group_pair_preferred_permissions");
         mb.Entity<GroupPairPreferredPermission>().HasKey(u => new { u.UserUID, u.GroupGID });
