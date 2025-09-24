@@ -23,8 +23,10 @@ namespace SpheneServer.Hubs;
 public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
 {
     private static readonly ConcurrentDictionary<string, string> _userConnections = new(StringComparer.Ordinal);
-    // Map hash keys to sender UIDs for acknowledgment lookup
+    // Map hash keys to sender UIDs for acknowledgment lookup (legacy - will be replaced by batch tracker)
     private static readonly ConcurrentDictionary<string, string> _acknowledgmentSenders = new(StringComparer.Ordinal);
+    // New batch acknowledgment tracker for proper session-based acknowledgments
+    private static readonly BatchAcknowledgmentTracker _batchAcknowledgmentTracker = new();
     private readonly SpheneMetrics _SpheneMetrics;
     private readonly SystemInfoService _systemInfoService;
     private readonly IHttpContextAccessor _contextAccessor;
@@ -267,7 +269,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     // Cleanup acknowledgment mappings for a specific user
     private static void CleanupAcknowledgmentMappingsForUser(string userUid)
     {
-        // Clean up any acknowledgment mappings for this user
+        // Clean up legacy acknowledgment mappings for this user
         var keysToRemove = new List<string>();
         
         foreach (var kvp in _acknowledgmentSenders)
@@ -282,6 +284,9 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         {
             _acknowledgmentSenders.TryRemove(key, out _);
         }
+        
+        // Clean up batch acknowledgment sessions for this user
+        _batchAcknowledgmentTracker.CleanupSessionsForUser(userUid);
     }
 
     public async Task Client_UserAckYouUpdate(UserPermissionsDto dto)
