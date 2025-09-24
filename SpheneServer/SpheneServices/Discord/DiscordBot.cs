@@ -427,7 +427,7 @@ internal class DiscordBot : IHostedService
             var onlineUsers = await _connectionMultiplexer.GetServer(endPoint).KeysAsync(pattern: "UID:*").CountAsync().ConfigureAwait(false);
 
             _logger.LogInformation("Users online: " + onlineUsers);
-            await _discordClient.SetActivityAsync(new Game("Your Registration Hub")).ConfigureAwait(false);
+            await _discordClient.SetActivityAsync(new CustomStatusGame("Your Registration Hub")).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
     }
