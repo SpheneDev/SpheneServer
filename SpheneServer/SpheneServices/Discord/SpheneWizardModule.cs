@@ -121,6 +121,72 @@ public partial class SpheneWizardModule : InteractionModuleBase
     }
 
 
+    [ComponentInteraction("wizard-change-alias")]
+    public async Task ChangeAlias()
+    {
+        if (!(await ValidateInteraction().ConfigureAwait(false))) return;
+        
+        await RespondWithModalAsync<ChangeAliasModal>("wizard-change-alias-modal").ConfigureAwait(false);
+    }
+    
+    [ModalInteraction("wizard-change-alias-modal")]
+    public async Task ProcessChangeAlias(ChangeAliasModal modal)
+    {
+        using var spheneDb = await GetDbContext().ConfigureAwait(false);
+        var discordId = Context.User.Id;
+        var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User).SingleOrDefaultAsync(e => e.DiscordId == discordId).ConfigureAwait(false);
+        
+        if (existingAuth != null && existingAuth.User != null)
+        {
+            EmbedBuilder eb;
+            ComponentBuilder cb;
+            // Überprüfen, ob der Alias bereits vergeben ist
+            bool aliasExists = await spheneDb.Users.AnyAsync(u => u.Alias == modal.NewAlias && u.UID != existingAuth.User.UID).ConfigureAwait(false);
+            
+            if (aliasExists)
+            {
+                eb = new();
+                eb.WithTitle("Soul Identity Conflict");
+                eb.WithDescription($"The soul resonance identifier **{modal.NewAlias}** is already in use by another entity. Please choose a different identifier.");
+                eb.WithColor(Color.Red);
+                
+                cb = new();
+                cb.WithButton("Try Again", "wizard-change-alias", ButtonStyle.Primary, new Emoji("✨"));
+                AddHome(cb);
+                
+                await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+                return;
+            }
+            
+            existingAuth.User.Alias = modal.NewAlias;
+            await spheneDb.SaveChangesAsync().ConfigureAwait(false);
+            
+            eb = new();
+            eb.WithTitle("Soul Identity Recalibrated");
+            eb.WithDescription($"Your soul resonance identifier has been successfully recalibrated to: **{modal.NewAlias}**" + Environment.NewLine + Environment.NewLine + 
+                "⚠️ **Important:** Please reconnect your Sphene Client once to activate the new identifier.");
+            eb.WithColor(Color.Green);
+            
+            cb = new();
+            AddHome(cb);
+            
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            await _botServices.LogToChannel($"{Context.User.Mention} changed their alias to {modal.NewAlias}").ConfigureAwait(false);
+        }
+        else
+        {
+            EmbedBuilder eb = new();
+            eb.WithTitle("Soul Resonance Error");
+            eb.WithDescription("Unable to update your alias. Please ensure you have a registered account.");
+            eb.WithColor(Color.Red);
+            
+            ComponentBuilder cb = new();
+            AddHome(cb);
+            
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+        }
+    }
+
     [ComponentInteraction("wizard-home:*")]
     public async Task StartWizard(bool init = false)
     {
@@ -133,6 +199,13 @@ public partial class SpheneWizardModule : InteractionModuleBase
 
         using var spheneDb = await GetDbContext().ConfigureAwait(false);
         bool hasAccount = await spheneDb.LodeStoneAuth.AnyAsync(u => u.DiscordId == Context.User.Id && u.StartedAt == null).ConfigureAwait(false);
+        
+        string currentAlias = null;
+        if (hasAccount)
+        {
+            var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User).SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id).ConfigureAwait(false);
+            currentAlias = existingAuth?.User?.Alias;
+        }
 
         if (init)
         {
@@ -156,59 +229,105 @@ public partial class SpheneWizardModule : InteractionModuleBase
 
         EmbedBuilder eb = new();
         eb.WithTitle("Welcome to the Sphene Network Terminal");
-        eb.WithDescription("Soul synchronization protocols available:" + Environment.NewLine + Environment.NewLine
+        string description = "Soul synchronization protocols available:" + Environment.NewLine;
+        
+        if (!string.IsNullOrEmpty(currentAlias))
+        {
+            description += $"Current Soul Resonance Identifier: **{currentAlias}**" + Environment.NewLine;
+        }
+        
+        description += Environment.NewLine
             + (!hasAccount ? string.Empty : ("- Check your soul resonance status press \"ℹ️ User Info\"" + Environment.NewLine))
             + (hasAccount ? string.Empty : ("- Initialize new soul connection press \"⚛ Register\"" + Environment.NewLine))
-            //+ (!hasAccount ? string.Empty : ("- Recover lost electrope key press \"🏥 Recover\"" + Environment.NewLine))
-            //+ (hasAccount ? string.Empty : ("- Reestablish soul link press \"🔗 Relink\"" + Environment.NewLine))
-            //+ (!hasAccount ? string.Empty : ("- Create secondary soul fragments press \"2️⃣ Secondary UID\"" + Environment.NewLine))
-            //+ (!hasAccount ? string.Empty : ("- Set soul resonance identifier press \"💅 Vanity IDs\"" + Environment.NewLine))
-            + (!hasAccount ? string.Empty : ("- Sever soul connections with \"⚠️ Delete\""))
-            );
+            + (!hasAccount ? string.Empty : ("- Recalibrate your soul resonance identifier press \"✨ Soul Identity\"" + Environment.NewLine))
+            + (!hasAccount ? string.Empty : ("- Generate a new electrope key press \"🔑 New Key\"" + Environment.NewLine))
+            + (!hasAccount ? string.Empty : ("- Sever soul connections with \"⚠️ Delete\""));
+        
+        eb.WithDescription(description);
         eb.WithColor(Color.Blue);
         ComponentBuilder cb = new();
         if (!hasAccount)
         {
             cb.WithButton("Register", "wizard-register", ButtonStyle.Primary, new Emoji("⚛"));
-            //cb.WithButton("Relink", "wizard-relink", ButtonStyle.Secondary, new Emoji("🔗"));
         }
         else
         {
             cb.WithButton("User Info", "wizard-userinfo", ButtonStyle.Secondary, new Emoji("ℹ️"));
-            //cb.WithButton("Recover", "wizard-recover", ButtonStyle.Secondary, new Emoji("🏥"));
-            //cb.WithButton("Secondary UID", "wizard-secondary", ButtonStyle.Secondary, new Emoji("2️⃣"));
-            //cb.WithButton("Vanity IDs", "wizard-vanity", ButtonStyle.Secondary, new Emoji("💅"));
+            cb.WithButton("Soul Identity", "wizard-change-alias", ButtonStyle.Secondary, new Emoji("✨"));
+            cb.WithButton("New Key", "wizard-newkey", ButtonStyle.Secondary, new Emoji("🔑"));
             cb.WithButton("Delete", "wizard-delete", ButtonStyle.Danger, new Emoji("⚠️"));
         }
 
         await InitOrUpdateInteraction(init, eb, cb).ConfigureAwait(false);
     }
 
-    public class VanityUidModal : IModal
+    [ComponentInteraction("wizard-newkey")]
+    public async Task RegenerateSecretKey()
     {
-        public string Title => "Set Vanity UID";
+        if (!(await ValidateInteraction().ConfigureAwait(false))) return;
 
-        [InputLabel("Set your Vanity UID")]
-        [ModalTextInput("vanity_uid", TextInputStyle.Short, "5-15 characters, underscore, dash", 5, 15)]
-        public string DesiredVanityUID { get; set; }
-    }
+        using var spheneDb = await GetDbContext().ConfigureAwait(false);
+        var discordId = Context.User.Id;
+        var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
+            .SingleOrDefaultAsync(e => e.DiscordId == discordId).ConfigureAwait(false);
 
-    public class VanityGidModal : IModal
-    {
-        public string Title => "Set Vanity Syncshell ID";
+        EmbedBuilder eb = new();
+        ComponentBuilder cb = new();
 
-        [InputLabel("Set your Vanity Syncshell ID")]
-        [ModalTextInput("vanity_gid", TextInputStyle.Short, "5-20 characters, underscore, dash", 5, 20)]
-        public string DesiredVanityGID { get; set; }
-    }
+        if (existingAuth == null || existingAuth.User == null)
+        {
+            eb.WithTitle("No account found");
+            eb.WithDescription("You do not have a registered account. Please use Register to initialize your soul connection.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
 
-    public class ConfirmDeletionModal : IModal
-    {
-        public string Title => "Confirm Account Deletion";
+        // Remove existing primary auth key if present
+        var primaryAuth = await spheneDb.Auth.Include(a => a.User)
+            .SingleOrDefaultAsync(a => a.UserUID == existingAuth.User.UID && a.PrimaryUserUID == null).ConfigureAwait(false);
+        if (primaryAuth != null)
+        {
+            spheneDb.Auth.Remove(primaryAuth);
+            await spheneDb.SaveChangesAsync().ConfigureAwait(false);
+        }
 
-        [InputLabel("Enter \"DELETE\" in all Caps")]
-        [ModalTextInput("confirmation", TextInputStyle.Short, "Enter DELETE")]
-        public string Delete { get; set; }
+        // Generate a new key using the same logic as registration
+        var originalSecretKeyTime = StringUtils.GenerateRandomString(64) + DateTime.UtcNow.ToString();
+        var originalSecretKey = StringUtils.Sha256String(originalSecretKeyTime);
+        var clientHashedKey = StringUtils.Sha256String(originalSecretKey);
+        string databaseHashedKey = StringUtils.Sha256String(clientHashedKey);
+
+        var newAuth = new Auth()
+        {
+            HashedKey = databaseHashedKey,
+            User = existingAuth.User,
+        };
+
+        await spheneDb.Auth.AddAsync(newAuth).ConfigureAwait(false);
+        await spheneDb.SaveChangesAsync().ConfigureAwait(false);
+
+        _logger.LogDebug("Regenerated key for user: {userUID}:{hashedKey}", existingAuth.User.UID, databaseHashedKey);
+        await _botServices.LogToChannel($"{Context.User.Mention} NEW KEY GENERATED: => {existingAuth.User.UID}").ConfigureAwait(false);
+
+        eb.WithColor(Color.Green);
+        eb.WithTitle($"New electrope key generated for UID: {existingAuth.User.UID}");
+        eb.WithDescription("This is your private electrope key. Do not share this electrope key with anyone. **If you lose it, it is irrevocably lost.**"
+                                     + Environment.NewLine + Environment.NewLine
+                                     + "**__NOTE: Electrope keys are considered legacy. Using the suggested OAuth2 authentication in Sphene, you do not need to use this Electrope Key.__**"
+                                     + Environment.NewLine + Environment.NewLine
+                                     + $"||**`{originalSecretKey}`**||"
+                                     + Environment.NewLine + Environment.NewLine
+                                     + "If you want to continue using legacy authentication, enter this key in Sphene Synchronos and hit save to connect to the network."
+                                     + Environment.NewLine
+                                     + "__NOTE: The Electrope Key only contains the letters ABCDEF and numbers 0 - 9.__"
+                                     + Environment.NewLine
+                                     + "You should connect as soon as possible to not get caught by the automatic cleanup process."
+                                     + Environment.NewLine
+                                     + "May your soul resonate with others.");
+        AddHome(cb);
+        await ModifyInteraction(eb, cb).ConfigureAwait(false);
     }
 
     private async Task<SpheneDbContext> GetDbContext()
@@ -282,29 +401,6 @@ public partial class SpheneWizardModule : InteractionModuleBase
         }
     }
 
-    private async Task AddGroupSelection(SpheneDbContext db, ComponentBuilder cb, string customId)
-    {
-        var primary = (await db.LodeStoneAuth.Include(u => u.User).SingleAsync(u => u.DiscordId == Context.User.Id).ConfigureAwait(false)).User;
-        var secondary = await db.Auth.Include(u => u.User).Where(u => u.PrimaryUserUID == primary.UID).Select(u => u.User).ToListAsync().ConfigureAwait(false);
-        var primaryGids = (await db.Groups.Include(u => u.Owner).Where(u => u.OwnerUID == primary.UID).ToListAsync().ConfigureAwait(false));
-        var secondaryGids = (await db.Groups.Include(u => u.Owner).Where(u => secondary.Select(u => u.UID).Contains(u.OwnerUID)).ToListAsync().ConfigureAwait(false));
-        SelectMenuBuilder gids = new();
-        if (primaryGids.Any() || secondaryGids.Any())
-        {
-            foreach (var item in primaryGids)
-            {
-                gids.AddOption(item.Alias ?? item.GID, item.GID, (item.Alias == null ? string.Empty : item.GID) + $" ({item.Owner.Alias ?? item.Owner.UID})", new Emoji("1️⃣"));
-            }
-            foreach (var item in secondaryGids)
-            {
-                gids.AddOption(item.Alias ?? item.GID, item.GID, (item.Alias == null ? string.Empty : item.GID) + $" ({item.Owner.Alias ?? item.Owner.UID})", new Emoji("2️⃣"));
-            }
-            gids.WithCustomId(customId);
-            gids.WithPlaceholder("Select a Syncshell");
-            cb.WithSelectMenu(gids);
-        }
-    }
-
     private async Task<string> GenerateLodestoneAuth(ulong discordid, string hashedLodestoneId, SpheneDbContext dbContext)
     {
         var auth = StringUtils.GenerateRandomString(12, "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz");
@@ -338,4 +434,22 @@ public partial class SpheneWizardModule : InteractionModuleBase
 
         return lodestoneId;
     }
+}
+
+public class ConfirmDeletionModal : IModal
+{
+    public string Title => "Confirm Account Deletion";
+
+    [InputLabel("Enter \"DELETE\" in all Caps")]
+    [ModalTextInput("confirmation", TextInputStyle.Short, "Enter DELETE")]
+    public string Delete { get; set; }
+}
+
+public class ChangeAliasModal : IModal
+{
+    public string Title => "Soul Identity Recalibration";
+
+    [InputLabel("Enter your new soul identifier")]
+    [ModalTextInput("new_alias", TextInputStyle.Short, "5-15 characters", 5, 15)]
+    public string NewAlias { get; set; }
 }
