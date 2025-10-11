@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Interactions;
 using Discord.Rest;
 using Discord.WebSocket;
@@ -369,6 +369,13 @@ internal class DiscordBot : IHostedService
 
     private async Task CheckVanityForGroup(RestGuild restGuild, Dictionary<ulong, string> allowedRoleIds, SpheneDbContext db, Group group, CancellationToken token)
     {
+        // Skip system-owned public syncshells (protect public city syncshells)
+        if (group.OwnerUID == "SYS_PUBSN")
+        {
+            _logger.LogDebug($"Skipping system-owned public syncshell: {group.GID} [{group.Alias}]");
+            return;
+        }
+
         var groupPrimaryUser = group.OwnerUID;
         var groupOwner = await db.Auth.Include(u => u.User).SingleOrDefaultAsync(u => u.UserUID == group.OwnerUID).ConfigureAwait(false);
         if (groupOwner != null && !string.IsNullOrEmpty(groupOwner.PrimaryUserUID))

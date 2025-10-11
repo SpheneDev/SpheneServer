@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using SpheneServer.Hubs;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using SpheneServer.Controllers;
 using SpheneShared.RequirementHandlers;
 using SpheneShared.Utils.Configuration;
+using Sphene.SpheneServer.Services;
 
 namespace SpheneServer;
 
@@ -108,6 +109,9 @@ public class Startup
 
         services.AddSingleton<GPoseLobbyDistributionService>();
         services.AddHostedService(provider => provider.GetService<GPoseLobbyDistributionService>());
+
+        services.AddSingleton<PublicCitySyncshellService>();
+        services.AddHostedService(provider => provider.GetService<PublicCitySyncshellService>());
     }
 
     private static void ConfigureSignalR(IServiceCollection services, IConfigurationSection spheneConfig)

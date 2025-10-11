@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SpheneShared.Data;
@@ -11,9 +12,11 @@ using SpheneShared.Data;
 namespace SpheneServer.Migrations
 {
     [DbContext(typeof(SpheneDbContext))]
-    partial class SpheneDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251008123317_MultiLocationAreaBoundWelcomePage")]
+    partial class MultiLocationAreaBoundWelcomePage
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -982,89 +985,6 @@ namespace SpheneServer.Migrations
                     b.ToTable("user_default_preferred_permissions", (string)null);
                 });
 
-            modelBuilder.Entity("SpheneShared.Models.UserHousingProperty", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<bool>("AllowIndoor")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_indoor");
-
-                    b.Property<bool>("AllowOutdoor")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_outdoor");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<long>("DivisionId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("division_id");
-
-                    b.Property<long>("HouseId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("house_id");
-
-                    b.Property<bool>("IsIndoor")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_indoor");
-
-                    b.Property<long>("MapId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("map_id");
-
-                    b.Property<bool>("PreferIndoorSyncshells")
-                        .HasColumnType("boolean")
-                        .HasColumnName("prefer_indoor_syncshells");
-
-                    b.Property<bool>("PreferOutdoorSyncshells")
-                        .HasColumnType("boolean")
-                        .HasColumnName("prefer_outdoor_syncshells");
-
-                    b.Property<long>("RoomId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("room_id");
-
-                    b.Property<long>("ServerId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("server_id");
-
-                    b.Property<long>("TerritoryId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("territory_id");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<string>("UserUID")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("user_uid");
-
-                    b.Property<long>("WardId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("ward_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_user_housing_properties");
-
-                    b.HasIndex("UserUID")
-                        .HasDatabaseName("ix_user_housing_properties_user_uid");
-
-                    b.HasIndex("UserUID", "ServerId", "TerritoryId", "WardId", "HouseId", "RoomId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_user_housing_properties_user_uid_server_id_territory_id_war");
-
-                    b.ToTable("user_housing_properties", (string)null);
-                });
-
             modelBuilder.Entity("SpheneShared.Models.UserPermissionSet", b =>
                 {
                     b.Property<string>("UserUID")
@@ -1464,17 +1384,6 @@ namespace SpheneServer.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_default_preferred_permissions_users_user_uid");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("SpheneShared.Models.UserHousingProperty", b =>
-                {
-                    b.HasOne("SpheneShared.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserUID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_user_housing_properties_users_user_uid");
 
                     b.Navigation("User");
                 });

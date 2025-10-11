@@ -116,6 +116,12 @@ public static class SharedDbFunctions
 
     private static async Task<bool> TryMigrateGroup(SpheneDbContext context, Group group, string potentialNewOwnerUid, int maxGroupsByUser)
     {
+        // Don't migrate system-owned public syncshells
+        if (group.OwnerUID == "SYS_PUBSN")
+        {
+            return false;
+        }
+
         var newOwnerOwnedGroups = await context.Groups.CountAsync(g => g.OwnerUID == potentialNewOwnerUid).ConfigureAwait(false);
         if (newOwnerOwnedGroups >= maxGroupsByUser)
         {

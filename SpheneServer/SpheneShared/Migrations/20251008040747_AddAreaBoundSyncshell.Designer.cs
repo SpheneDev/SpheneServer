@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SpheneShared.Data;
@@ -11,9 +12,11 @@ using SpheneShared.Data;
 namespace SpheneServer.Migrations
 {
     [DbContext(typeof(SpheneDbContext))]
-    partial class SpheneDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251008040747_AddAreaBoundSyncshell")]
+    partial class AddAreaBoundSyncshell
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -22,14 +25,19 @@ namespace SpheneServer.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("SpheneShared.Models.AreaBoundLocation", b =>
+            modelBuilder.Entity("SpheneShared.Models.AreaBoundSyncshell", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                    b.Property<string>("GroupGID")
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("group_gid");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    b.Property<int>("AreaMatchingMode")
+                        .HasColumnType("integer")
+                        .HasColumnName("area_matching_mode");
+
+                    b.Property<bool>("AutoBroadcastEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_broadcast_enabled");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -39,25 +47,17 @@ namespace SpheneServer.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("division_id");
 
-                    b.Property<string>("GroupGID")
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("group_gid");
-
                     b.Property<int>("HouseId")
                         .HasColumnType("integer")
                         .HasColumnName("house_id");
-
-                    b.Property<string>("LocationName")
-                        .HasColumnType("text")
-                        .HasColumnName("location_name");
 
                     b.Property<long>("MapId")
                         .HasColumnType("bigint")
                         .HasColumnName("map_id");
 
-                    b.Property<int>("MatchingMode")
+                    b.Property<int>("MaxAutoJoinUsers")
                         .HasColumnType("integer")
-                        .HasColumnName("matching_mode");
+                        .HasColumnName("max_auto_join_users");
 
                     b.Property<byte>("RoomId")
                         .HasColumnType("smallint")
@@ -75,120 +75,19 @@ namespace SpheneServer.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("ward_id");
 
-                    b.HasKey("Id")
-                        .HasName("pk_area_bound_locations");
-
-                    b.HasIndex("GroupGID")
-                        .HasDatabaseName("ix_area_bound_locations_group_gid");
-
-                    b.HasIndex("ServerId", "MapId")
-                        .HasDatabaseName("ix_area_bound_locations_server_id_map_id");
-
-                    b.HasIndex("ServerId", "TerritoryId")
-                        .HasDatabaseName("ix_area_bound_locations_server_id_territory_id");
-
-                    b.ToTable("area_bound_locations", (string)null);
-                });
-
-            modelBuilder.Entity("SpheneShared.Models.AreaBoundSyncshell", b =>
-                {
-                    b.Property<string>("GroupGID")
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("group_gid");
-
-                    b.Property<bool>("AutoBroadcastEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("auto_broadcast_enabled");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("CustomJoinMessage")
-                        .HasColumnType("text")
-                        .HasColumnName("custom_join_message");
-
-                    b.Property<string>("JoinRules")
-                        .HasColumnType("text")
-                        .HasColumnName("join_rules");
-
-                    b.Property<int>("MaxAutoJoinUsers")
-                        .HasColumnType("integer")
-                        .HasColumnName("max_auto_join_users");
-
-                    b.Property<bool>("NotifyOnUserEnter")
-                        .HasColumnType("boolean")
-                        .HasColumnName("notify_on_user_enter");
-
-                    b.Property<bool>("NotifyOnUserLeave")
-                        .HasColumnType("boolean")
-                        .HasColumnName("notify_on_user_leave");
-
-                    b.Property<bool>("RequireOwnerPresence")
-                        .HasColumnType("boolean")
-                        .HasColumnName("require_owner_presence");
-
-                    b.Property<bool>("RequireRulesAcceptance")
-                        .HasColumnType("boolean")
-                        .HasColumnName("require_rules_acceptance");
-
-                    b.Property<int>("RulesVersion")
-                        .HasColumnType("integer")
-                        .HasColumnName("rules_version");
-
                     b.HasKey("GroupGID")
                         .HasName("pk_area_bound_syncshells");
 
                     b.HasIndex("AutoBroadcastEnabled")
                         .HasDatabaseName("ix_area_bound_syncshells_auto_broadcast_enabled");
 
+                    b.HasIndex("ServerId", "MapId")
+                        .HasDatabaseName("ix_area_bound_syncshells_server_id_map_id");
+
+                    b.HasIndex("ServerId", "TerritoryId")
+                        .HasDatabaseName("ix_area_bound_syncshells_server_id_territory_id");
+
                     b.ToTable("area_bound_syncshells", (string)null);
-                });
-
-            modelBuilder.Entity("SpheneShared.Models.AreaBoundSyncshellConsent", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("AcceptedRulesVersion")
-                        .HasColumnType("integer")
-                        .HasColumnName("accepted_rules_version");
-
-                    b.Property<DateTime>("ConsentGivenAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("consent_given_at");
-
-                    b.Property<bool>("HasAccepted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_accepted");
-
-                    b.Property<DateTime?>("LastRulesAcceptedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_rules_accepted_at");
-
-                    b.Property<string>("SyncshellGID")
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("syncshell_gid");
-
-                    b.Property<string>("UserUID")
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("user_uid");
-
-                    b.HasKey("Id")
-                        .HasName("pk_area_bound_syncshell_consents");
-
-                    b.HasIndex("SyncshellGID")
-                        .HasDatabaseName("ix_area_bound_syncshell_consents_syncshell_gid");
-
-                    b.HasIndex("UserUID", "SyncshellGID")
-                        .IsUnique()
-                        .HasDatabaseName("ix_area_bound_syncshell_consents_user_uid_syncshell_gid");
-
-                    b.ToTable("area_bound_syncshell_consents", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.Auth", b =>
@@ -844,64 +743,6 @@ namespace SpheneServer.Migrations
                     b.ToTable("lodestone_auth", (string)null);
                 });
 
-            modelBuilder.Entity("SpheneShared.Models.SyncshellWelcomePage", b =>
-                {
-                    b.Property<string>("GroupGID")
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("group_gid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("ImageContentType")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("image_content_type");
-
-                    b.Property<string>("ImageFileName")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("image_file_name");
-
-                    b.Property<long?>("ImageSize")
-                        .HasColumnType("bigint")
-                        .HasColumnName("image_size");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_enabled");
-
-                    b.Property<bool>("ShowOnAreaBoundJoin")
-                        .HasColumnType("boolean")
-                        .HasColumnName("show_on_area_bound_join");
-
-                    b.Property<bool>("ShowOnJoin")
-                        .HasColumnType("boolean")
-                        .HasColumnName("show_on_join");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<string>("WelcomeImageBase64")
-                        .HasColumnType("text")
-                        .HasColumnName("welcome_image_base64");
-
-                    b.Property<string>("WelcomeText")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("welcome_text");
-
-                    b.HasKey("GroupGID")
-                        .HasName("pk_syncshell_welcome_pages");
-
-                    b.HasIndex("IsEnabled")
-                        .HasDatabaseName("ix_syncshell_welcome_pages_is_enabled");
-
-                    b.ToTable("syncshell_welcome_pages", (string)null);
-                });
-
             modelBuilder.Entity("SpheneShared.Models.User", b =>
                 {
                     b.Property<string>("UID")
@@ -980,89 +821,6 @@ namespace SpheneServer.Migrations
                         .HasDatabaseName("ix_user_default_preferred_permissions_user_uid");
 
                     b.ToTable("user_default_preferred_permissions", (string)null);
-                });
-
-            modelBuilder.Entity("SpheneShared.Models.UserHousingProperty", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<bool>("AllowIndoor")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_indoor");
-
-                    b.Property<bool>("AllowOutdoor")
-                        .HasColumnType("boolean")
-                        .HasColumnName("allow_outdoor");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<long>("DivisionId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("division_id");
-
-                    b.Property<long>("HouseId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("house_id");
-
-                    b.Property<bool>("IsIndoor")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_indoor");
-
-                    b.Property<long>("MapId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("map_id");
-
-                    b.Property<bool>("PreferIndoorSyncshells")
-                        .HasColumnType("boolean")
-                        .HasColumnName("prefer_indoor_syncshells");
-
-                    b.Property<bool>("PreferOutdoorSyncshells")
-                        .HasColumnType("boolean")
-                        .HasColumnName("prefer_outdoor_syncshells");
-
-                    b.Property<long>("RoomId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("room_id");
-
-                    b.Property<long>("ServerId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("server_id");
-
-                    b.Property<long>("TerritoryId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("territory_id");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<string>("UserUID")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("user_uid");
-
-                    b.Property<long>("WardId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("ward_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_user_housing_properties");
-
-                    b.HasIndex("UserUID")
-                        .HasDatabaseName("ix_user_housing_properties_user_uid");
-
-                    b.HasIndex("UserUID", "ServerId", "TerritoryId", "WardId", "HouseId", "RoomId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_user_housing_properties_user_uid_server_id_territory_id_war");
-
-                    b.ToTable("user_housing_properties", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.UserPermissionSet", b =>
@@ -1146,17 +904,6 @@ namespace SpheneServer.Migrations
                     b.ToTable("user_profile_data", (string)null);
                 });
 
-            modelBuilder.Entity("SpheneShared.Models.AreaBoundLocation", b =>
-                {
-                    b.HasOne("SpheneShared.Models.AreaBoundSyncshell", "AreaBoundSyncshell")
-                        .WithMany("Locations")
-                        .HasForeignKey("GroupGID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_area_bound_locations_area_bound_syncshells_group_gid");
-
-                    b.Navigation("AreaBoundSyncshell");
-                });
-
             modelBuilder.Entity("SpheneShared.Models.AreaBoundSyncshell", b =>
                 {
                     b.HasOne("SpheneShared.Models.Group", "Group")
@@ -1167,25 +914,6 @@ namespace SpheneServer.Migrations
                         .HasConstraintName("fk_area_bound_syncshells_groups_group_gid");
 
                     b.Navigation("Group");
-                });
-
-            modelBuilder.Entity("SpheneShared.Models.AreaBoundSyncshellConsent", b =>
-                {
-                    b.HasOne("SpheneShared.Models.Group", "Syncshell")
-                        .WithMany()
-                        .HasForeignKey("SyncshellGID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_area_bound_syncshell_consents_groups_syncshell_gid");
-
-                    b.HasOne("SpheneShared.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserUID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_area_bound_syncshell_consents_users_user_uid");
-
-                    b.Navigation("Syncshell");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.Auth", b =>
@@ -1444,18 +1172,6 @@ namespace SpheneServer.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("SpheneShared.Models.SyncshellWelcomePage", b =>
-                {
-                    b.HasOne("SpheneShared.Models.Group", "Group")
-                        .WithMany()
-                        .HasForeignKey("GroupGID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_syncshell_welcome_pages_groups_group_gid");
-
-                    b.Navigation("Group");
-                });
-
             modelBuilder.Entity("SpheneShared.Models.UserDefaultPreferredPermission", b =>
                 {
                     b.HasOne("SpheneShared.Models.User", "User")
@@ -1464,17 +1180,6 @@ namespace SpheneServer.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_default_preferred_permissions_users_user_uid");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("SpheneShared.Models.UserHousingProperty", b =>
-                {
-                    b.HasOne("SpheneShared.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserUID")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_user_housing_properties_users_user_uid");
 
                     b.Navigation("User");
                 });
@@ -1510,11 +1215,6 @@ namespace SpheneServer.Migrations
                         .HasConstraintName("fk_user_profile_data_users_user_uid");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("SpheneShared.Models.AreaBoundSyncshell", b =>
-                {
-                    b.Navigation("Locations");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.CharaData", b =>

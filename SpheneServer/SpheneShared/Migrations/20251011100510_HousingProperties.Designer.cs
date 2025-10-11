@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SpheneShared.Data;
@@ -11,9 +12,11 @@ using SpheneShared.Data;
 namespace SpheneServer.Migrations
 {
     [DbContext(typeof(SpheneDbContext))]
-    partial class SpheneDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251011100510_HousingProperties")]
+    partial class HousingProperties
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1018,14 +1021,6 @@ namespace SpheneServer.Migrations
                     b.Property<long>("MapId")
                         .HasColumnType("bigint")
                         .HasColumnName("map_id");
-
-                    b.Property<bool>("PreferIndoorSyncshells")
-                        .HasColumnType("boolean")
-                        .HasColumnName("prefer_indoor_syncshells");
-
-                    b.Property<bool>("PreferOutdoorSyncshells")
-                        .HasColumnType("boolean")
-                        .HasColumnName("prefer_outdoor_syncshells");
 
                     b.Property<long>("RoomId")
                         .HasColumnType("bigint")

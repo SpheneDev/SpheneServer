@@ -55,5 +55,9 @@ namespace SpheneServer.Hubs
         public Task Client_GposeLobbyPushCharacterData(CharaDataDownloadDto charaDownloadDto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_GposeLobbyPushPoseData(UserData userData, PoseData poseData) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_GposeLobbyPushWorldData(UserData userData, WorldData worldData) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_AreaBoundJoinRequest(AreaBoundJoinRequestDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+    public Task Client_AreaBoundJoinResponse(AreaBoundJoinResponseDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+    public Task Client_AreaBoundSyncshellBroadcast(AreaBoundBroadcastDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+    public Task Client_AreaBoundSyncshellConfigurationUpdate() => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     }
 }

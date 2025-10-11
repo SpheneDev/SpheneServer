@@ -62,6 +62,11 @@ public class SpheneDbContext : DbContext
     public DbSet<CharaDataPose> CharaDataPoses { get; set; }
     public DbSet<CharaDataAllowance> CharaDataAllowances { get; set; }
     public DbSet<CharaDataHash> CharaDataHashes { get; set; }
+    public DbSet<AreaBoundSyncshell> AreaBoundSyncshells { get; set; }
+    public DbSet<AreaBoundLocation> AreaBoundLocations { get; set; }
+    public DbSet<AreaBoundSyncshellConsent> AreaBoundSyncshellConsents { get; set; }
+    public DbSet<SyncshellWelcomePage> SyncshellWelcomePages { get; set; }
+    public DbSet<UserHousingProperty> UserHousingProperties { get; set; }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -155,5 +160,33 @@ public class SpheneDbContext : DbContext
         mb.Entity<CharaDataAllowance>().HasIndex(c => c.ParentId);
         mb.Entity<CharaDataAllowance>().HasOne(u => u.AllowedGroup).WithMany().HasForeignKey(u => u.AllowedGroupGID).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<CharaDataAllowance>().HasOne(u => u.AllowedUser).WithMany().HasForeignKey(u => u.AllowedUserUID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<AreaBoundSyncshell>().ToTable("area_bound_syncshells");
+        mb.Entity<AreaBoundSyncshell>().HasKey(a => a.GroupGID);
+        mb.Entity<AreaBoundSyncshell>().HasOne(a => a.Group).WithMany().HasForeignKey(a => a.GroupGID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<AreaBoundSyncshell>().HasMany(a => a.Locations).WithOne(l => l.AreaBoundSyncshell).HasForeignKey(l => l.GroupGID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<AreaBoundSyncshell>().HasIndex(a => a.AutoBroadcastEnabled);
+        
+        mb.Entity<AreaBoundLocation>().ToTable("area_bound_locations");
+        mb.Entity<AreaBoundLocation>().HasKey(l => l.Id);
+        mb.Entity<AreaBoundLocation>().HasIndex(l => new { l.ServerId, l.TerritoryId });
+        mb.Entity<AreaBoundLocation>().HasIndex(l => new { l.ServerId, l.MapId });
+        mb.Entity<AreaBoundLocation>().HasIndex(l => l.GroupGID);
+        
+        mb.Entity<AreaBoundSyncshellConsent>().ToTable("area_bound_syncshell_consents");
+        mb.Entity<AreaBoundSyncshellConsent>().HasKey(c => c.Id);
+        mb.Entity<AreaBoundSyncshellConsent>().HasOne(c => c.User).WithMany().HasForeignKey(c => c.UserUID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<AreaBoundSyncshellConsent>().HasOne(c => c.Syncshell).WithMany().HasForeignKey(c => c.SyncshellGID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<AreaBoundSyncshellConsent>().HasIndex(c => new { c.UserUID, c.SyncshellGID }).IsUnique();
+        
+        mb.Entity<SyncshellWelcomePage>().ToTable("syncshell_welcome_pages");
+        mb.Entity<SyncshellWelcomePage>().HasKey(w => w.GroupGID);
+        mb.Entity<SyncshellWelcomePage>().HasOne(w => w.Group).WithMany().HasForeignKey(w => w.GroupGID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<SyncshellWelcomePage>().HasIndex(w => w.IsEnabled);
+        
+        mb.Entity<UserHousingProperty>().ToTable("user_housing_properties");
+        mb.Entity<UserHousingProperty>().HasKey(p => p.Id);
+        mb.Entity<UserHousingProperty>().HasOne(p => p.User).WithMany().HasForeignKey(p => p.UserUID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<UserHousingProperty>().HasIndex(p => p.UserUID);
+        mb.Entity<UserHousingProperty>().HasIndex(p => new { p.UserUID, p.ServerId, p.TerritoryId, p.WardId, p.HouseId, p.RoomId }).IsUnique();
     }
 }

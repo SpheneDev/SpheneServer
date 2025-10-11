@@ -146,7 +146,7 @@ public partial class SpheneHub
 
     private async Task<(bool isValid, Group ReferredGroup)> TryValidateOwner(string gid)
     {
-        var group = await DbContext.Groups.SingleOrDefaultAsync(g => g.GID == gid).ConfigureAwait(false);
+        var group = await DbContext.Groups.Include(g => g.Owner).SingleOrDefaultAsync(g => g.GID == gid).ConfigureAwait(false);
         if (group == null) return (false, null);
 
         return (string.Equals(group.OwnerUID, UserUID, StringComparison.Ordinal), group);
