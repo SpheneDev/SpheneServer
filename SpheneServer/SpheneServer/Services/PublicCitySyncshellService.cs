@@ -29,6 +29,106 @@ public class PublicCitySyncshellService : IHostedService
         new CityInfo("Ul'dah", 130, 13)
     };
 
+    // FFXIV World IDs - comprehensive list of all servers
+    private readonly List<WorldInfo> _ffxivWorlds = new()
+    {
+        // North American - Aether Data Center
+        new WorldInfo(73, "Adamantoise"),
+        new WorldInfo(79, "Cactuar"),
+        new WorldInfo(54, "Faerie"),
+        new WorldInfo(63, "Gilgamesh"),
+        new WorldInfo(40, "Jenova"),
+        new WorldInfo(65, "Midgardsormr"),
+        new WorldInfo(99, "Sargatanas"),
+        new WorldInfo(57, "Siren"),
+        
+        // North American - Crystal Data Center
+        new WorldInfo(91, "Balmung"),
+        new WorldInfo(34, "Brynhildr"),
+        new WorldInfo(74, "Coeurl"),
+        new WorldInfo(62, "Diabolos"),
+        new WorldInfo(81, "Goblin"),
+        new WorldInfo(75, "Malboro"),
+        new WorldInfo(37, "Mateus"),
+        new WorldInfo(41, "Zalera"),
+        
+        // North American - Primal Data Center
+        new WorldInfo(78, "Behemoth"),
+        new WorldInfo(93, "Excalibur"),
+        new WorldInfo(53, "Exodus"),
+        new WorldInfo(35, "Famfrit"),
+        new WorldInfo(95, "Hyperion"),
+        new WorldInfo(55, "Lamia"),
+        new WorldInfo(64, "Leviathan"),
+        new WorldInfo(77, "Ultros"),
+        
+        // European - Chaos Data Center
+        new WorldInfo(80, "Cerberus"),
+        new WorldInfo(83, "Louisoix"),
+        new WorldInfo(71, "Moogle"),
+        new WorldInfo(39, "Omega"),
+        new WorldInfo(85, "Phantom"),
+        new WorldInfo(97, "Ragnarok"),
+        new WorldInfo(400, "Sagittarius"),
+        new WorldInfo(36, "Spriggan"),
+        
+        // European - Light Data Center
+        new WorldInfo(66, "Alpha"),
+        new WorldInfo(56, "Lich"),
+        new WorldInfo(59, "Odin"),
+        new WorldInfo(403, "Raiden"),
+        new WorldInfo(67, "Shiva"),
+        new WorldInfo(33, "Twintania"),
+        new WorldInfo(42, "Zodiark"),
+        
+        // Japanese - Elemental Data Center
+        new WorldInfo(90, "Aegis"),
+        new WorldInfo(68, "Atomos"),
+        new WorldInfo(45, "Carbuncle"),
+        new WorldInfo(58, "Garuda"),
+        new WorldInfo(94, "Gungnir"),
+        new WorldInfo(49, "Kujata"),
+        new WorldInfo(96, "Ramuh"),
+        new WorldInfo(76, "Tonberry"),
+        new WorldInfo(61, "Typhon"),
+        new WorldInfo(50, "Unicorn"),
+        
+        // Japanese - Gaia Data Center
+        new WorldInfo(43, "Alexander"),
+        new WorldInfo(46, "Bahamut"),
+        new WorldInfo(69, "Durandal"),
+        new WorldInfo(92, "Fenrir"),
+        new WorldInfo(98, "Ifrit"),
+        new WorldInfo(72, "Ridill"),
+        new WorldInfo(51, "Tiamat"),
+        new WorldInfo(47, "Ultima"),
+        new WorldInfo(48, "Valefor"),
+        new WorldInfo(44, "Yojimbo"),
+        
+        // Japanese - Mana Data Center
+        new WorldInfo(23, "Anima"),
+        new WorldInfo(70, "Asura"),
+        new WorldInfo(52, "Chocobo"),
+        new WorldInfo(60, "Hades"),
+        new WorldInfo(38, "Ixion"),
+        new WorldInfo(86, "Masamune"),
+        new WorldInfo(87, "Pandaemonium"),
+        new WorldInfo(88, "Shinryu"),
+        new WorldInfo(28, "Titan"),
+        
+        // Japanese - Meteor Data Center
+        new WorldInfo(24, "Belias"),
+        new WorldInfo(29, "Mandragora"),
+        new WorldInfo(30, "Zeromus"),
+        
+        // Oceanian - Materia Data Center
+        new WorldInfo(21, "Bismarck"),
+        new WorldInfo(22, "Ravana"),
+        new WorldInfo(86, "Sephirot"),
+        new WorldInfo(87, "Sophia"),
+        new WorldInfo(88, "Zurvan")
+    };
+
     public PublicCitySyncshellService(ILogger<PublicCitySyncshellService> logger, IServiceProvider serviceProvider)
     {
         _logger = logger;
@@ -64,9 +164,13 @@ public class PublicCitySyncshellService : IHostedService
         // Get the current server's identifier (we'll use a system user for ownership)
         var systemUser = await GetOrCreateSystemUser(dbContext);
 
-        foreach (var city in _mainCities)
+        // Create syncshells for each city on each world
+        foreach (var world in _ffxivWorlds)
         {
-            await EnsureCitySyncshellExists(dbContext, city, systemUser, cancellationToken);
+            foreach (var city in _mainCities)
+            {
+                await EnsureCitySyncshellExists(dbContext, city, world, systemUser, cancellationToken);
+            }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -102,24 +206,49 @@ public class PublicCitySyncshellService : IHostedService
         return systemUser;
     }
 
-    private async Task EnsureCitySyncshellExists(SpheneDbContext dbContext, CityInfo city, User systemUser, CancellationToken cancellationToken)
+    private async Task EnsureCitySyncshellExists(SpheneDbContext dbContext, CityInfo city, WorldInfo world, User systemUser, CancellationToken cancellationToken)
     {
         // Create a short alias for this city syncshell (max 10 chars for varchar constraint)
-        var alias = city.Name switch
+        // Include world name to make it unique per server
+        var baseAlias = city.Name switch
         {
             "Limsa Lominsa" => "Limsa",
             "New Gridania" => "Gridania", 
             "Ul'dah" => "Uldah",
-            _ => city.Name.Substring(0, Math.Min(10, city.Name.Length))
+            _ => city.Name.Substring(0, Math.Min(6, city.Name.Length))
         };
         
-        // Check if a public syncshell for this city already exists
+        // Truncate world name if needed to fit in 10 char limit
+        var worldSuffix = world.Name.Length > 4 ? world.Name.Substring(0, 4) : world.Name;
+        var alias = $"{baseAlias}_{worldSuffix}";
+        if (alias.Length > 10)
+        {
+            alias = alias.Substring(0, 10);
+        }
+        
+        // Check if a public syncshell for this city and world already exists
         var existingGroup = await dbContext.Groups
             .FirstOrDefaultAsync(g => g.Alias == alias && g.OwnerUID == systemUser.UID);
 
         if (existingGroup != null)
         {
-            _logger.LogDebug("Public syncshell for {CityName} already exists with GID {GID}", city.Name, existingGroup.GID);
+            _logger.LogDebug("Public syncshell for {CityName} on {WorldName} already exists with GID {GID}", city.Name, world.Name, existingGroup.GID);
+            
+            // Load the AreaBoundSyncshell and its locations separately
+            var existingAreaBoundSyncshell = await dbContext.AreaBoundSyncshells
+                .Include(abs => abs.Locations)
+                .FirstOrDefaultAsync(abs => abs.GroupGID == existingGroup.GID);
+            
+            // Ensure the location binding has the correct ServerId
+            if (existingAreaBoundSyncshell?.Locations?.Any() == true)
+            {
+                var existingLocationBinding = existingAreaBoundSyncshell.Locations.First();
+                if (existingLocationBinding.ServerId != world.Id)
+                {
+                    existingLocationBinding.ServerId = (ushort)world.Id;
+                    _logger.LogDebug("Updated ServerId for {CityName} on {WorldName} syncshell to {ServerId}", city.Name, world.Name, world.Id);
+                }
+            }
             
             // Update the welcome page image and text if it exists
             var existingWelcomePage = await dbContext.SyncshellWelcomePages
@@ -136,17 +265,17 @@ public class PublicCitySyncshellService : IHostedService
                     existingWelcomePage.ImageSize = newImageData.Length;
                     existingWelcomePage.UpdatedAt = DateTime.UtcNow;
                     
-                    _logger.LogDebug("Updated welcome page image for {CityName} syncshell", city.Name);
+                    _logger.LogDebug("Updated welcome page image for {CityName} on {WorldName} syncshell", city.Name, world.Name);
                 }
                 
                 // Update welcome text to latest version
-                var newWelcomeText = GetDefaultWelcomeMessage(city.Name);
+                var newWelcomeText = GetDefaultWelcomeMessage(city.Name, world.Name);
                 if (existingWelcomePage.WelcomeText != newWelcomeText)
                 {
                     existingWelcomePage.WelcomeText = newWelcomeText;
                     existingWelcomePage.UpdatedAt = DateTime.UtcNow;
                     
-                    _logger.LogDebug("Updated welcome page text for {CityName} syncshell", city.Name);
+                    _logger.LogDebug("Updated welcome page text for {CityName} on {WorldName} syncshell", city.Name, world.Name);
                 }
             }
             
@@ -180,20 +309,20 @@ public class PublicCitySyncshellService : IHostedService
             Group = newGroup,
             AutoBroadcastEnabled = true,
             MaxAutoJoinUsers = 100, // Allow up to 100 users to auto-join
-            JoinRules = GetDefaultCityRules(city.Name),
+            JoinRules = GetDefaultCityRules(city.Name, world.Name),
             RequireRulesAcceptance = true
         };
 
         await dbContext.AreaBoundSyncshells.AddAsync(areaBoundSyncshell);
 
-        // Add the location binding
-        var locationBinding = new AreaBoundLocation
+        // Add the location binding with the specific world ID
+        var newLocationBinding = new AreaBoundLocation
         {
             GroupGID = gid,
             AreaBoundSyncshell = areaBoundSyncshell,
             TerritoryId = (uint)city.TerritoryId,
             MapId = (uint)city.MapId,
-            ServerId = 0, // 0 means all servers
+            ServerId = (ushort)world.Id, // Use the specific FFXIV world ID
             DivisionId = 0,
             WardId = 0,
             HouseId = 0,
@@ -202,14 +331,14 @@ public class PublicCitySyncshellService : IHostedService
             CreatedAt = DateTime.UtcNow
         };
 
-        await dbContext.AreaBoundLocations.AddAsync(locationBinding);
+        await dbContext.AreaBoundLocations.AddAsync(newLocationBinding);
 
         // Create welcome page
         var welcomePage = new SyncshellWelcomePage
         {
             GroupGID = gid,
             Group = newGroup,
-            WelcomeText = GetDefaultWelcomeMessage(city.Name),
+            WelcomeText = GetDefaultWelcomeMessage(city.Name, world.Name),
             IsEnabled = true,
             ShowOnJoin = true,
             ShowOnAreaBoundJoin = true,
@@ -223,7 +352,7 @@ public class PublicCitySyncshellService : IHostedService
 
         await dbContext.SyncshellWelcomePages.AddAsync(welcomePage);
 
-        _logger.LogInformation("Created public syncshell for {CityName} with GID {GID}", city.Name, gid);
+        _logger.LogInformation("Created public syncshell for {CityName} on {WorldName} (ID: {WorldId}) with GID {GID}", city.Name, world.Name, world.Id, gid);
     }
 
     private async Task<string> GenerateUniqueGID(SpheneDbContext dbContext)
@@ -239,9 +368,9 @@ public class PublicCitySyncshellService : IHostedService
         return gid;
     }
 
-    private string GetDefaultCityRules(string cityName)
+    private string GetDefaultCityRules(string cityName, string worldName)
     {
-        return $@"Welcome to the public {cityName} syncshell!
+        return $@"Welcome to the public {cityName} syncshell for {worldName}!
 
 Rules:
 1. Be respectful to all members
@@ -253,12 +382,12 @@ Rules:
 By accepting these rules, you agree to follow them while in this syncshell.";
     }
 
-    private string GetDefaultWelcomeMessage(string cityName)
+    private string GetDefaultWelcomeMessage(string cityName, string worldName)
     {
-        return $@"# Welcome to the <color=#00A3FF>{cityName} </color> Public Syncshell!
+        return $@"# Welcome to the <color=#00A3FF>{cityName} </color> Public Syncshell for <color=#FFAE00>{worldName}</color>!
 
 
-## This is the <color=#FFAE00>official Sphene community space</color> for <color=#FFAE00>{cityName}</color>. We're glad to have you here!
+## This is the <color=#FFAE00>official Sphene community space</color> for <color=#FFAE00>{cityName}</color> on <color=#FFAE00>{worldName}</color>. We're glad to have you here!
 
 # <color=#00A3FF>Community Guidelines</color>
 
@@ -271,7 +400,7 @@ By accepting these rules, you agree to follow them while in this syncshell.";
 
 # <color=#00A3FF>About This Space</color>
 
-### -  Open to all Sphene users visiting {cityName}
+### -  Open to all Sphene users visiting {cityName} on {worldName}
 ### -  Automatically managed by the Sphene system
 ### -  Designed for your comfort and enjoyment
 
@@ -284,4 +413,5 @@ We hope you feel welcome and comfortable here. Thank you for being part of our c
     }
 
     private record CityInfo(string Name, int TerritoryId, int MapId);
+    private record WorldInfo(int Id, string Name);
 }
