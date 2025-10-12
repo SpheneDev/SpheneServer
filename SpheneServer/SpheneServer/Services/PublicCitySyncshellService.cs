@@ -54,6 +54,7 @@ public class PublicCitySyncshellService : IHostedService
         
         // North American - Primal Data Center
         new WorldInfo(78, "Behemoth"),
+        new WorldInfo(32, "Dynamis"),
         new WorldInfo(93, "Excalibur"),
         new WorldInfo(53, "Exodus"),
         new WorldInfo(35, "Famfrit"),
@@ -67,18 +68,18 @@ public class PublicCitySyncshellService : IHostedService
         new WorldInfo(83, "Louisoix"),
         new WorldInfo(71, "Moogle"),
         new WorldInfo(39, "Omega"),
-        new WorldInfo(85, "Phantom"),
+        new WorldInfo(401, "Phantom"),
         new WorldInfo(97, "Ragnarok"),
         new WorldInfo(400, "Sagittarius"),
-        new WorldInfo(36, "Spriggan"),
+        new WorldInfo(85, "Spriggan"),
         
         // European - Light Data Center
-        new WorldInfo(66, "Alpha"),
-        new WorldInfo(56, "Lich"),
-        new WorldInfo(59, "Odin"),
+        new WorldInfo(402, "Alpha"),
+        new WorldInfo(33, "Lich"),
+        new WorldInfo(56, "Odin"),
         new WorldInfo(403, "Raiden"),
         new WorldInfo(67, "Shiva"),
-        new WorldInfo(33, "Twintania"),
+        new WorldInfo(59, "Twintania"),
         new WorldInfo(42, "Zodiark"),
         
         // Japanese - Elemental Data Center
@@ -124,9 +125,9 @@ public class PublicCitySyncshellService : IHostedService
         // Oceanian - Materia Data Center
         new WorldInfo(21, "Bismarck"),
         new WorldInfo(22, "Ravana"),
-        new WorldInfo(86, "Sephirot"),
-        new WorldInfo(87, "Sophia"),
-        new WorldInfo(88, "Zurvan")
+        new WorldInfo(84, "Sephirot"),
+        new WorldInfo(89, "Sophia"),
+        new WorldInfo(31, "Zurvan")
     };
 
     public PublicCitySyncshellService(ILogger<PublicCitySyncshellService> logger, IServiceProvider serviceProvider)
