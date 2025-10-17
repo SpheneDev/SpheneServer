@@ -165,6 +165,9 @@ public class PublicCitySyncshellService : IHostedService
         // Get the current server's identifier (we'll use a system user for ownership)
         var systemUser = await GetOrCreateSystemUser(dbContext);
 
+        // First, clean up old public syncshells that don't follow the new naming pattern
+        await CleanupOldPublicSyncshells(dbContext, systemUser, cancellationToken);
+
         // Create syncshells for each city on each world
         foreach (var world in _ffxivWorlds)
         {
@@ -209,8 +212,7 @@ public class PublicCitySyncshellService : IHostedService
 
     private async Task EnsureCitySyncshellExists(SpheneDbContext dbContext, CityInfo city, WorldInfo world, User systemUser, CancellationToken cancellationToken)
     {
-        // Create a short alias for this city syncshell (max 10 chars for varchar constraint)
-        // Include world name to make it unique per server
+        // Create a full name alias for this city syncshell using the complete world name
         var baseAlias = city.Name switch
         {
             "Limsa Lominsa" => "Limsa",
@@ -219,13 +221,8 @@ public class PublicCitySyncshellService : IHostedService
             _ => city.Name.Substring(0, Math.Min(6, city.Name.Length))
         };
         
-        // Truncate world name if needed to fit in 10 char limit
-        var worldSuffix = world.Name.Length > 4 ? world.Name.Substring(0, 4) : world.Name;
-        var alias = $"{baseAlias}_{worldSuffix}";
-        if (alias.Length > 10)
-        {
-            alias = alias.Substring(0, 10);
-        }
+        // Use the full world name instead of truncating it
+        var alias = $"{baseAlias} {world.Name}";
         
         // Check if a public syncshell for this city and world already exists
         var existingGroup = await dbContext.Groups
@@ -354,6 +351,79 @@ public class PublicCitySyncshellService : IHostedService
         await dbContext.SyncshellWelcomePages.AddAsync(welcomePage);
 
         _logger.LogInformation("Created public syncshell for {CityName} on {WorldName} (ID: {WorldId}) with GID {GID}", city.Name, world.Name, world.Id, gid);
+    }
+
+    private async Task CleanupOldPublicSyncshells(SpheneDbContext dbContext, User systemUser, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Cleaning up old public syncshells with truncated naming pattern...");
+
+        // Find all public syncshells owned by the system user that follow the old naming pattern
+        var oldPublicSyncshells = await dbContext.Groups
+            .Where(g => g.OwnerUID == systemUser.UID && 
+                       g.GID.StartsWith("PUB") &&
+                       (g.Alias.Contains("_") || g.Alias.Length <= 10)) // Old pattern used underscores and was limited to 10 chars
+            .ToListAsync(cancellationToken);
+
+        foreach (var oldSyncshell in oldPublicSyncshells)
+        {
+            _logger.LogInformation("Deleting old public syncshell with alias '{Alias}' and GID '{GID}'", oldSyncshell.Alias, oldSyncshell.GID);
+
+            // Delete related data first (foreign key constraints)
+            var areaBoundSyncshell = await dbContext.AreaBoundSyncshells
+                .Include(abs => abs.Locations)
+                .FirstOrDefaultAsync(abs => abs.GroupGID == oldSyncshell.GID, cancellationToken);
+
+            if (areaBoundSyncshell != null)
+            {
+                // Delete area bound locations
+                if (areaBoundSyncshell.Locations?.Any() == true)
+                {
+                    dbContext.AreaBoundLocations.RemoveRange(areaBoundSyncshell.Locations);
+                }
+
+                // Delete area bound syncshell
+                dbContext.AreaBoundSyncshells.Remove(areaBoundSyncshell);
+            }
+
+            // Delete welcome page if exists
+            var welcomePage = await dbContext.SyncshellWelcomePages
+                .FirstOrDefaultAsync(wp => wp.GroupGID == oldSyncshell.GID, cancellationToken);
+            if (welcomePage != null)
+            {
+                dbContext.SyncshellWelcomePages.Remove(welcomePage);
+            }
+
+            // Delete any group members
+            var groupMembers = await dbContext.GroupPairs
+                .Where(gu => gu.GroupGID == oldSyncshell.GID)
+                .ToListAsync(cancellationToken);
+            if (groupMembers.Any())
+            {
+                dbContext.GroupPairs.RemoveRange(groupMembers);
+            }
+
+            // Delete any area bound consents
+            var consents = await dbContext.AreaBoundSyncshellConsents
+                .Where(c => c.SyncshellGID == oldSyncshell.GID)
+                .ToListAsync(cancellationToken);
+            if (consents.Any())
+            {
+                dbContext.AreaBoundSyncshellConsents.RemoveRange(consents);
+            }
+
+            // Finally delete the group itself
+            dbContext.Groups.Remove(oldSyncshell);
+        }
+
+        if (oldPublicSyncshells.Any())
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Deleted {Count} old public syncshells", oldPublicSyncshells.Count);
+        }
+        else
+        {
+            _logger.LogInformation("No old public syncshells found to delete");
+        }
     }
 
     private async Task<string> GenerateUniqueGID(SpheneDbContext dbContext)
