@@ -1116,16 +1116,53 @@ public partial class SpheneHub
 
         if (binding == null) return false;
 
-        // If rules acceptance is not required, consent is always valid
-        if (!binding.RequireRulesAcceptance) return true;
-
-        // Check if user has valid consent
+        // Always check if user has valid consent (for auto-rejoin functionality)
         var consent = await DbContext.AreaBoundSyncshellConsents
             .SingleOrDefaultAsync(c => c.UserUID == UserUID && c.SyncshellGID == syncshellGID)
             .ConfigureAwait(false);
 
-        // Return true if consent exists, user has accepted, and rules version is current
-        return consent != null && consent.HasAccepted && consent.AcceptedRulesVersion >= binding.RulesVersion;
+        // If no consent exists, user has never joined before
+        if (consent == null) return false;
+
+        // User must have accepted to auto-rejoin
+        if (!consent.HasAccepted) return false;
+
+        // If rules acceptance is required, check rules version
+        if (binding.RequireRulesAcceptance)
+        {
+            return consent.AcceptedRulesVersion >= binding.RulesVersion;
+        }
+
+        // For syncshells without rules, consent is valid if user has accepted before
+        return true;
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task<bool> GroupResetAreaBoundConsent(string syncshellGID)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(syncshellGID));
+
+        // Validate that the area-bound syncshell exists
+        var binding = await DbContext.AreaBoundSyncshells
+            .SingleOrDefaultAsync(a => a.GroupGID == syncshellGID)
+            .ConfigureAwait(false);
+
+        if (binding == null) return false;
+
+        // Find existing consent record
+        var consent = await DbContext.AreaBoundSyncshellConsents
+            .SingleOrDefaultAsync(c => c.UserUID == UserUID && c.SyncshellGID == syncshellGID)
+            .ConfigureAwait(false);
+
+        if (consent != null)
+        {
+            consent.HasAccepted = false;
+            consent.ConsentGivenAt = DateTime.UtcNow;
+            await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        }
+
+        _logger.LogCallInfo(SpheneHubLogger.Args(syncshellGID, "Success"));
+        return true;
     }
 
     [Authorize(Policy = "Identified")]
