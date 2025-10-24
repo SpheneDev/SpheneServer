@@ -356,6 +356,15 @@ public partial class SpheneHub
         // Handle legacy hash-based acknowledgments for backward compatibility
         else if (_acknowledgmentSenders.TryGetValue(acknowledgmentDto.DataHash, out var originalSenderUid))
         {
+            // Clean up the acknowledgment mapping FIRST to prevent duplicate processing
+            var removed = _acknowledgmentSenders.TryRemove(acknowledgmentDto.DataHash, out _);
+            
+            if (!removed)
+            {
+                _logger.LogCallWarning(SpheneHubLogger.Args("Acknowledgment already processed - User:", UserUID, "Hash:", acknowledgmentDto.DataHash[..8]));
+                return;
+            }
+            
             // Validate that the acknowledging user has a pair relationship with the original sender
             var pairExists = await DbContext.ClientPairs.AsNoTracking()
                 .AnyAsync(p => (p.UserUID == UserUID && p.OtherUserUID == originalSenderUid) ||
@@ -378,9 +387,6 @@ public partial class SpheneHub
             
             // Send acknowledgment only to the original sender
             await Clients.User(originalSenderUid).Client_UserReceiveCharacterDataAcknowledgment(forwardedAcknowledgment).ConfigureAwait(false);
-            
-            // Clean up the acknowledgment mapping after successful delivery (legacy behavior)
-            _acknowledgmentSenders.TryRemove(acknowledgmentDto.DataHash, out _);
             
             _logger.LogCallInfo(SpheneHubLogger.Args("LegacyAck - User:", UserUID, "Hash:", acknowledgmentDto.DataHash[..8]));
         }
