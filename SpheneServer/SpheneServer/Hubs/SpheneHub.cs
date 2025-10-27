@@ -143,9 +143,10 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     [Authorize(Policy = "Authenticated")]
     public async Task<bool> CheckClientHealth()
     {
+        _logger.LogCallInfo(SpheneHubLogger.Args("CheckClientHealth", Context.ConnectionId));
         await UpdateUserOnRedis().ConfigureAwait(false);
-
-        return false;
+        _logger.LogDebug("CheckClientHealth completed for connection {0}", Context.ConnectionId);
+        return true;
     }
 
     [Authorize(Policy = "Authenticated")]
@@ -292,6 +293,293 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     public async Task Client_UserAckYouUpdate(UserPermissionsDto dto)
     {
         await Clients.Caller.Client_UserAckYouUpdate(dto).ConfigureAwait(false);
+    }
+
+    // Deathroll SignalR Methods
+    public async Task<bool> DeathrollSendInvitation(DeathrollInvitationDto invitation)
+    {
+        try
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("DeathrollSendInvitation", invitation.Sender.AliasOrUID, invitation.Recipient.AliasOrUID, invitation.InvitationId));
+            
+            // If recipient UID is null, try to resolve it from the name
+            string recipientUID = invitation.Recipient.UID;
+            if (string.IsNullOrEmpty(recipientUID))
+            {
+                _logger.LogDebug("Attempting to resolve recipient name {0} to UID", invitation.Recipient.AliasOrUID);
+                
+                var recipientUser = await DbContext.Users.SingleOrDefaultAsync(u => 
+                    u.Alias == invitation.Recipient.AliasOrUID).ConfigureAwait(false);
+                
+                if (recipientUser != null)
+                {
+                    recipientUID = recipientUser.UID;
+                    _logger.LogDebug("Successfully resolved recipient name {0} to UID {1}", 
+                        invitation.Recipient.AliasOrUID, recipientUID);
+                }
+                else
+                {
+                    _logger.LogCallWarning(SpheneHubLogger.Args("Could not resolve recipient name", invitation.Recipient.AliasOrUID));
+                    return false;
+                }
+            }
+            else
+            {
+                _logger.LogDebug("Recipient UID already provided: {0}", recipientUID);
+            }
+            
+            // Check if recipient is online
+            var recipientConnectionId = GetConnectionIdForUser(recipientUID);
+            _logger.LogDebug("DEATHROLL DEBUG: Checking connection for recipient UID {0}, ConnectionId: {1}", 
+                recipientUID, recipientConnectionId ?? "null");
+            
+            // Log all current connections for debugging
+            _logger.LogDebug("DEATHROLL DEBUG: Current user connections count: {0}", _userConnections.Count);
+            foreach (var kvp in _userConnections)
+            {
+                _logger.LogDebug("DEATHROLL DEBUG: Connection mapping - UID: {0} -> ConnectionId: {1}", kvp.Key, kvp.Value);
+            }
+            
+            if (!string.IsNullOrEmpty(recipientConnectionId))
+            {
+                _logger.LogDebug("DEATHROLL DEBUG: Sending deathroll invitation to online recipient {0} (UID: {1}) via ConnectionId: {2}", 
+                    invitation.Recipient.AliasOrUID, recipientUID, recipientConnectionId);
+                
+                try
+                 {
+                     await Clients.Client(recipientConnectionId).Client_DeathrollInvitationReceived(invitation);
+                     _logger.LogDebug("DEATHROLL DEBUG: Successfully sent SignalR message to ConnectionId: {0}", recipientConnectionId);
+                 }
+                 catch (Exception ex)
+                 {
+                     _logger.LogCallWarning(SpheneHubLogger.Args("DEATHROLL DEBUG: Failed to send SignalR message to ConnectionId", recipientConnectionId, ex.Message));
+                     return false;
+                 }
+                
+                _logger.LogCallInfo(SpheneHubLogger.Args("Successfully sent deathroll invitation to", invitation.Recipient.AliasOrUID));
+                return true;
+            }
+            
+            _logger.LogCallWarning(SpheneHubLogger.Args("DEATHROLL DEBUG: Recipient not online", invitation.Recipient.AliasOrUID, recipientUID));
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollSendInvitation", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollRespondToInvitation(DeathrollInvitationResponseDto response)
+    {
+        try
+        {
+            _logger.LogDebug("Processing deathroll invitation response from {0}: {1}", 
+                response.Responder.AliasOrUID, response.Accepted);
+            
+            // Find the original sender and notify them of the response
+            // For now, broadcast to all connected clients (can be optimized later)
+            await Clients.All.Client_DeathrollInvitationResponse(response);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollRespondToInvitation", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollUpdateGameState(DeathrollGameStateDto gameState)
+    {
+        try
+        {
+            _logger.LogDebug("Updating deathroll game state for game {0}", gameState.GameId);
+            
+            // Broadcast game state update to all players in the game
+            await Clients.All.Client_DeathrollGameStateUpdate(gameState);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollUpdateGameState", ex.Message));
+            return false;
+        }
+    }
+
+    // New lobby system methods
+    public async Task<bool> DeathrollUpdateLobbyState(DeathrollGameStateDto lobbyState)
+    {
+        try
+        {
+            _logger.LogDebug("Updating deathroll lobby {0} with name '{1}'", lobbyState.GameId, lobbyState.LobbyName);
+            
+            // Broadcast lobby state update to all connected clients
+            await Clients.All.Client_DeathrollGameStateUpdate(lobbyState);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollUpdateLobbyState", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollCreateLobby(DeathrollCreateLobbyDto createLobby)
+    {
+        try
+        {
+            _logger.LogDebug("Creating lobby {0} with max players {1}", createLobby.LobbyName, createLobby.MaxPlayers);
+            
+            // For now, just log the creation - in a real implementation you'd store the lobby
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollCreateLobby", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollJoinLobby(DeathrollJoinLobbyDto joinRequest)
+    {
+        try
+        {
+            _logger.LogDebug("Player {0} requesting to join lobby {1}", joinRequest.PlayerName, joinRequest.GameId);
+            
+            // For now, broadcast the join request to all clients
+            // In a real implementation, you'd validate the lobby exists and has space
+            await Clients.All.Client_DeathrollLobbyJoinRequest(joinRequest);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollJoinLobby", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollLeaveLobby(DeathrollLeaveLobbyDto leaveInfo)
+    {
+        try
+        {
+            _logger.LogDebug("Player {0} leaving lobby {1}", leaveInfo.PlayerName, leaveInfo.GameId);
+            // Broadcast leave to all clients so host can update lobby membership
+            await Clients.All.Client_DeathrollLobbyLeave(leaveInfo);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollLeaveLobby", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollOpenCloseLobby(string gameId, bool isOpen)
+    {
+        try
+        {
+            _logger.LogDebug("{0} lobby {1}", isOpen ? "Opening" : "Closing", gameId);
+            
+            // Broadcast lobby open/close status to all clients
+            await Clients.All.Client_DeathrollLobbyOpenClose(gameId, isOpen);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollOpenCloseLobby", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollStartGameFromLobby(string gameId)
+    {
+        try
+        {
+            _logger.LogDebug("Starting game from lobby {0}", gameId);
+            
+            // Broadcast game start to all clients
+            await Clients.All.Client_DeathrollGameStart(gameId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollStartGameFromLobby", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollCancelLobby(string gameId)
+    {
+        try
+        {
+            _logger.LogDebug("Canceling lobby {0}", gameId);
+            
+            // Broadcast lobby cancellation to all clients
+            await Clients.All.Client_DeathrollLobbyCanceled(gameId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollCancelLobby", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollSetPlayerReady(string gameId, string playerId, bool isReady)
+    {
+        try
+        {
+            _logger.LogDebug("Setting player {0} ready status to {1} in lobby {2}", playerId, isReady, gameId);
+            
+            // Broadcast player ready status to all clients
+            await Clients.All.Client_DeathrollPlayerReady(gameId, playerId, isReady);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollSetPlayerReady", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollAnnounceLobby(DeathrollLobbyAnnouncementDto announcement)
+    {
+        try
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("Received lobby announcement for game", announcement.GameId, "from host", announcement.Host?.AliasOrUID ?? "Unknown"));
+            
+            // Broadcast lobby announcement to all clients
+            await Clients.All.Client_DeathrollLobbyAnnouncement(announcement);
+            
+            _logger.LogCallInfo(SpheneHubLogger.Args("Successfully broadcasted lobby announcement for game", announcement.GameId, "to all clients"));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollAnnounceLobby", ex.Message));
+            return false;
+        }
+    }
+
+    public async Task<bool> DeathrollUpdateTournamentState(DeathrollTournamentStateDto dto)
+    {
+        try
+        {
+            _logger.LogDebug("Updating deathroll tournament state for game {0}, tournament {1}", dto.GameId, dto.TournamentId);
+            await Clients.All.Client_DeathrollTournamentUpdate(dto);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("DeathrollUpdateTournamentState", ex.Message));
+            return false;
+        }
+    }
+
+    // Helper method to get connection ID for a user
+    private static string? GetConnectionIdForUser(string userUid)
+    {
+        return _userConnections.TryGetValue(userUid, out var connectionId) ? connectionId : null;
     }
 
     // Client_UserAckOtherUpdate method removed - AckOther is controlled by other player's AckYou
