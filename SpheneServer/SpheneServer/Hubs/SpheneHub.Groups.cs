@@ -1384,6 +1384,7 @@ public partial class SpheneHub
     public async Task BroadcastAreaBoundSyncshells(LocationInfo userLocation)
     {
         _logger.LogCallInfo(SpheneHubLogger.Args(userLocation));
+        _logger.LogCallInfo(SpheneHubLogger.Args("BroadcastAreaBoundSyncshells called from user", UserUID, "at location:", userLocation != null ? userLocation.ToString() : "null"));
 
         // Find all area-bound syncshells that have locations matching the user's location
         var areaBoundSyncshells = await DbContext.AreaBoundSyncshells
@@ -1392,6 +1393,8 @@ public partial class SpheneHub
             .Where(a => a.AutoBroadcastEnabled)
             .ToListAsync()
             .ConfigureAwait(false);
+
+        _logger.LogDebug("Found {0} area-bound syncshells with auto-broadcast enabled", areaBoundSyncshells.Count);
 
         var matchingSyncshells = new List<AreaBoundSyncshell>();
         

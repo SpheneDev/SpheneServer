@@ -56,8 +56,23 @@ namespace SpheneServer.Hubs
         public Task Client_GposeLobbyPushPoseData(UserData userData, PoseData poseData) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_GposeLobbyPushWorldData(UserData userData, WorldData worldData) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_AreaBoundJoinRequest(AreaBoundJoinRequestDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
-    public Task Client_AreaBoundJoinResponse(AreaBoundJoinResponseDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
-    public Task Client_AreaBoundSyncshellBroadcast(AreaBoundBroadcastDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
-    public Task Client_AreaBoundSyncshellConfigurationUpdate() => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_AreaBoundJoinResponse(AreaBoundJoinResponseDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_AreaBoundSyncshellBroadcast(AreaBoundBroadcastDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_AreaBoundSyncshellConfigurationUpdate() => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+
+        // Deathroll client stub methods
+        public Task Client_DeathrollInvitationReceived(DeathrollInvitationDto invitation) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollInvitationResponse(DeathrollInvitationResponseDto response) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollGameStateUpdate(DeathrollGameStateDto gameState) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        
+        // New lobby system client stub methods
+        public Task Client_DeathrollLobbyJoinRequest(DeathrollJoinLobbyDto joinRequest) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollLobbyOpenClose(string gameId, bool isOpen) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollLobbyLeave(DeathrollLeaveLobbyDto leaveInfo) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollGameStart(string gameId) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollLobbyCanceled(string gameId) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollPlayerReady(string gameId, string playerId, bool isReady) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollLobbyAnnouncement(DeathrollLobbyAnnouncementDto announcement) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_DeathrollTournamentUpdate(DeathrollTournamentStateDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     }
 }
