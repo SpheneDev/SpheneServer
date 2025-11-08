@@ -4,6 +4,7 @@ using Sphene.API.Dto;
 using Sphene.API.Dto.CharaData;
 using Sphene.API.Dto.Group;
 using Sphene.API.Dto.User;
+using Sphene.API.Dto.Visibility;
 
 namespace SpheneServer.Hubs
 {
@@ -59,5 +60,6 @@ namespace SpheneServer.Hubs
     public Task Client_AreaBoundJoinResponse(AreaBoundJoinResponseDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     public Task Client_AreaBoundSyncshellBroadcast(AreaBoundBroadcastDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     public Task Client_AreaBoundSyncshellConfigurationUpdate() => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_UserMutualVisibilityUpdate(MutualVisibilityDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     }
 }
