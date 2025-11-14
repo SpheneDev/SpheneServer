@@ -80,6 +80,36 @@ public abstract class AuthControllerBase : Controller
         }
 
         Logger.LogInformation("Authenticate:SUCCESS:{id}:{ident}", authResult.Uid, charaIdent);
+
+        try
+        {
+            var autoCreate = Configuration.GetValueOrDefault(nameof(AuthServiceConfiguration.AutoCreateCharaHashOnSecretKeyLogin), false);
+            if (autoCreate)
+            {
+                var uidToUse = authResult.PrimaryUid ?? authResult.Uid;
+                if (!string.IsNullOrWhiteSpace(uidToUse))
+                {
+                    var existing = await dbContext.CharaDataHashes.AsNoTracking().FirstOrDefaultAsync(h => h.ParentId == uidToUse).ConfigureAwait(false);
+                    if (existing == null)
+                    {
+                        dbContext.CharaDataHashes.Add(new CharaDataHash
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            ParentId = uidToUse,
+                            Hash = string.Empty,
+                            LastUpdated = DateTime.UtcNow
+                        });
+                        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                        Logger.LogDebug("Auth: Created missing CharaDataHash for user {uid}", uidToUse);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Auth: Failed to pre-create CharaDataHash");
+        }
+
         return await CreateJwtFromId(authResult.Uid!, charaIdent, authResult.Alias ?? string.Empty);
     }
 

@@ -32,7 +32,8 @@
                    "RedisConnectionString":  "redis:6379,password=secretredispassword,abortConnect=false",
                    "FailedAuthForTempBan":  5,
                    "UseGeoIP":  false,
-                   "GeoIPDbCityFile":  ""
+                   "GeoIPDbCityFile":  "",
+                   "AutoCreateCharaHashOnSecretKeyLogin": false
                },
     "AllowedHosts":  "*",
     "Kestrel":  {

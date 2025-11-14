@@ -79,6 +79,42 @@ public class JwtController : AuthControllerBase
             var hashedAuth = StringUtils.Sha256String(auth);
             var authResult = await SecretKeyAuthenticatorService.AuthorizeAsync(ip, hashedAuth);
 
+            if (!authResult.Success)
+            {
+                var autoCreate = Configuration.GetValueOrDefault(nameof(AuthServiceConfiguration.AutoCreateCharaHashOnSecretKeyLogin), false);
+                if (autoCreate)
+                {
+                    var user = new SpheneShared.Models.User();
+                    var hasValidUid = false;
+                    while (!hasValidUid)
+                    {
+                        var uid = StringUtils.GenerateRandomString(10);
+                        if (await dbContext.Users.AnyAsync(u => u.UID == uid || u.Alias == uid).ConfigureAwait(false))
+                            continue;
+                        user.UID = uid;
+                        hasValidUid = true;
+                    }
+
+                    user.Alias = string.Empty;
+                    user.LastLoggedIn = DateTime.UtcNow;
+
+                    var authEntity = new SpheneShared.Models.Auth()
+                    {
+                        HashedKey = hashedAuth,
+                        User = user,
+                    };
+
+                    await dbContext.Users.AddAsync(user).ConfigureAwait(false);
+                    await dbContext.Auth.AddAsync(authEntity).ConfigureAwait(false);
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+                    Logger.LogInformation("Authenticate:AUTOCREATE:{uid}:{ident}", user.UID, charaIdent);
+
+                    var created = new SpheneAuthService.Authentication.SecretKeyAuthReply(true, user.UID, user.UID, user.Alias, false, false, false);
+                    return await GenericAuthResponse(dbContext, charaIdent, created);
+                }
+            }
+
             return await GenericAuthResponse(dbContext, charaIdent, authResult);
         }
         catch (Exception ex)

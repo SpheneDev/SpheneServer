@@ -10,6 +10,7 @@ public class AuthServiceConfiguration : SpheneConfigurationBase
     public int TempBanDurationInMinutes { get; set; } = 5;
     public List<string> WhitelistedIps { get; set; } = new();
     public Uri PublicOAuthBaseUri { get; set; } = null;
+    public bool AutoCreateCharaHashOnSecretKeyLogin { get; set; } = false;
     public string? DiscordOAuthClientSecret { get; set; } = null;
     public string? DiscordOAuthClientId { get; set; } = null;
     public override string ToString()
