@@ -1,39 +1,30 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 as build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS BUILD
 
 COPY SpheneAPI /SpheneAPI
 COPY server/SpheneServer/SpheneShared /server/SpheneServer/SpheneShared
 COPY server/SpheneServer/SpheneServer /server/SpheneServer/SpheneServer
 
-# Build SpheneAPI first
+# Build SpheneAPI
 WORKDIR /SpheneAPI/SpheneAPI
 RUN dotnet build \
-        --configuration=Release \
-        --output=/SpheneAPI/bin \
-        Sphene.API.csproj
+    -c Release \
+    -o /SpheneAPI/bin \
+    Sphene.API.csproj
 
-WORKDIR /server/SpheneServer/SpheneServer/
+WORKDIR /server/SpheneServer/SpheneServer
 
 RUN dotnet publish \
-        --configuration=Release \
-        --os=linux \
-        --output=/build \
-        SpheneServer.csproj
+    -c Release \
+    -r linux-x64 \
+    --self-contained false \
+    -o /build \
+    SpheneServer.csproj
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 
-RUN adduser \
-        --disabled-password \
-        --group \
-        --no-create-home \
-        --quiet \
-        --system \
-        sphene
-
-COPY --from=build /build /opt/SpheneServer
-RUN chown -R sphene:sphene /opt/SpheneServer
-RUN apt-get update; apt-get install curl -y
-
-USER sphene:sphene
 WORKDIR /opt/SpheneServer
+COPY --from=BUILD /build .
 
-CMD ["./SpheneServer"]
+USER app
+
+ENTRYPOINT ["dotnet", "SpheneServer.dll"]

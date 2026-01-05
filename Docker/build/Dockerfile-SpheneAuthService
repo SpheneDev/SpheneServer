@@ -1,39 +1,34 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 as BUILD
+# ================= BUILD =================
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS BUILD
 
 COPY SpheneAPI /SpheneAPI
 COPY server/SpheneServer/SpheneShared /server/SpheneServer/SpheneShared
 COPY server/SpheneServer/SpheneAuthService /server/SpheneServer/SpheneAuthService
 
-# Build SpheneAPI first
+# Build SpheneAPI
 WORKDIR /SpheneAPI/SpheneAPI
 RUN dotnet build \
-        --configuration=Release \
-        --output=/SpheneAPI/bin \
-        Sphene.API.csproj
+    -c Release \
+    -o /SpheneAPI/bin \
+    Sphene.API.csproj
 
-WORKDIR /server/SpheneServer/SpheneAuthService/
-
+# Publish Auth Service
+WORKDIR /server/SpheneServer/SpheneAuthService
 RUN dotnet publish \
-        --configuration=Debug \
-        --os=linux \
-        --output=/build \
-        SpheneAuthService.csproj
+    -c Release \
+    -r linux-x64 \
+    --self-contained false \
+    -o /build \
+    SpheneAuthService.csproj
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0
 
-RUN adduser \
-        --disabled-password \
-        --group \
-        --no-create-home \
-        --quiet \
-        --system \
-        sphene
+# ================= RUNTIME =================
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 
-COPY --from=BUILD /build /opt/SpheneAuthService
-RUN chown -R sphene:sphene /opt/SpheneAuthService
-RUN apt-get update; apt-get install curl -y
-
-USER sphene:sphene
 WORKDIR /opt/SpheneAuthService
+COPY --from=BUILD /build .
 
-CMD ["./SpheneAuthService"]
+# .NET 10 runtime already provides non-root user
+USER app
+
+ENTRYPOINT ["dotnet", "SpheneAuthService.dll"]
