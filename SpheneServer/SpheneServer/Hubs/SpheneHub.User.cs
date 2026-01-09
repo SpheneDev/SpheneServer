@@ -168,6 +168,18 @@ public partial class SpheneHub
     }
 
     [Authorize(Policy = "Identified")]
+    public async Task UserUpdateGposeState(bool isInGpose)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args("IsInGpose:", isInGpose));
+
+        var usersToSendDataTo = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+        if (usersToSendDataTo.Count == 0) return;
+
+        var dto = new UserGposeStateDto(new(UserUID), isInGpose, DateTime.UtcNow);
+        await Clients.Users(usersToSendDataTo).Client_UserGposeStateUpdate(dto).ConfigureAwait(false);
+    }
+
+    [Authorize(Policy = "Identified")]
     public async Task<List<UserFullPairDto>> UserGetPairedClients()
     {
         _logger.LogCallInfo();

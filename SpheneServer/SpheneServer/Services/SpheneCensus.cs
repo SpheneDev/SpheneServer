@@ -1,4 +1,4 @@
-﻿using Sphene.API.Dto.User;
+using Sphene.API.Dto.User;
 using Microsoft.VisualBasic.FileIO;
 using Prometheus;
 using System.Collections.Concurrent;
@@ -31,6 +31,31 @@ public class SpheneCensus : IHostedService
     }
 
     private bool Initialized => _gauge != null;
+
+    private static readonly string[] XivapiDataminingBranches = ["main", "master"];
+
+    private static string BuildXivapiDataminingCsvUrl(string branch, string csvFileName)
+    {
+        return $"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/{branch}/csv/{csvFileName}";
+    }
+
+    private async Task<string?> TryDownloadXivapiCsvAsync(HttpClient client, string csvFileName, CancellationToken cancellationToken)
+    {
+        foreach (var branch in XivapiDataminingBranches)
+        {
+            try
+            {
+                var url = BuildXivapiDataminingCsvUrl(branch, csvFileName);
+                return await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Failed to download XIVAPI data from branch {branch} ({file})", branch, csvFileName);
+            }
+        }
+
+        return null;
+    }
 
     public void ClearStatistics(string uid)
     {
@@ -72,7 +97,14 @@ public class SpheneCensus : IHostedService
 
         Dictionary<ushort, short> worldDcs = new();
 
-        var dcs = await client.GetStringAsync("https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/WorldDCGroupType.csv", cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var dcs = await TryDownloadXivapiCsvAsync(client, "WorldDCGroupType.csv", cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(dcs))
+            {
+                _logger.LogWarning("Skipping census initialization: failed to download WorldDCGroupType.csv");
+                return;
+            }
         // dc: https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/WorldDCGroupType.csv
         // id, name, region
 
@@ -92,7 +124,12 @@ public class SpheneCensus : IHostedService
             _dcs[id] = name;
         }
 
-        var worlds = await client.GetStringAsync("https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/World.csv", cancellationToken).ConfigureAwait(false);
+        var worlds = await TryDownloadXivapiCsvAsync(client, "World.csv", cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(worlds))
+        {
+            _logger.LogWarning("Skipping census initialization: failed to download World.csv");
+            return;
+        }
         // world: https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/World.csv
         // id, internalname, name, region, usertype, datacenter, ispublic
 
@@ -114,7 +151,12 @@ public class SpheneCensus : IHostedService
             _logger.LogInformation("World: ID: {id}, Name: {name}, DC: {dc}", id, name, dc);
         }
 
-        var races = await client.GetStringAsync("https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/Race.csv", cancellationToken).ConfigureAwait(false);
+        var races = await TryDownloadXivapiCsvAsync(client, "Race.csv", cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(races))
+        {
+            _logger.LogWarning("Skipping census initialization: failed to download Race.csv");
+            return;
+        }
         // race: https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/Race.csv
         // id, masc name, fem name, other crap I don't care about
 
@@ -134,7 +176,12 @@ public class SpheneCensus : IHostedService
             _logger.LogInformation("Race: ID: {id}, Name: {name}", id, name);
         }
 
-        var tribe = await client.GetStringAsync("https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/Tribe.csv", cancellationToken).ConfigureAwait(false);
+        var tribe = await TryDownloadXivapiCsvAsync(client, "Tribe.csv", cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(tribe))
+        {
+            _logger.LogWarning("Skipping census initialization: failed to download Tribe.csv");
+            return;
+        }
         // tribe: https://raw.githubusercontent.com/xivapi/ffxiv-datamining/master/csv/Tribe.csv
         // id masc name, fem name, other crap I don't care about
 
@@ -158,6 +205,11 @@ public class SpheneCensus : IHostedService
         _gender[1] = "Female";
 
         _gauge = Metrics.CreateGauge("sphene_census", "sphene informational census data", new[] { "dc", "world", "gender", "race", "subrace" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Skipping census initialization due to startup error");
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
