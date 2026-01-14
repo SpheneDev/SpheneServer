@@ -134,7 +134,17 @@ public class ServerFilesController : ControllerBase
     {
         using var dbContext = await _SpheneDbContext.CreateDbContextAsync();
 
-        var userSentHashes = new HashSet<string>(filesSendDto.FileHashes.Distinct(StringComparer.Ordinal).Select(s => string.Concat(s.Where(c => char.IsLetterOrDigit(c)))), StringComparer.Ordinal);
+        var userSentHashes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var hash in filesSendDto.FileHashes ?? [])
+        {
+            var normalizedHash = NormalizeHashForLookup(hash);
+            if (string.IsNullOrEmpty(normalizedHash))
+            {
+                continue;
+            }
+
+            userSentHashes.Add(normalizedHash);
+        }
         _logger.LogInformation("{user}|FilesSend: requested upload for {hashCount} hashes to {uidCount} recipients", SpheneUser, userSentHashes.Count, filesSendDto.UIDs?.Count ?? 0);
         
         if (filesSendDto.ModInfo != null)
@@ -149,6 +159,76 @@ public class ServerFilesController : ControllerBase
         var notCoveredFiles = new Dictionary<string, UploadFileDto>(StringComparer.Ordinal);
         var forbiddenFiles = await dbContext.ForbiddenUploadEntries.AsNoTracking().Where(f => userSentHashes.Contains(f.Hash)).ToDictionaryAsync(f => f.Hash, f => f).ConfigureAwait(false);
         var existingFiles = await dbContext.Files.AsNoTracking().Where(f => userSentHashes.Contains(f.Hash)).ToDictionaryAsync(f => f.Hash, f => f).ConfigureAwait(false);
+        var unavailableHashes = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var existingFile in existingFiles)
+        {
+            if (!existingFile.Value.Uploaded || existingFile.Value.Size <= 0)
+            {
+                continue;
+            }
+
+            FileInfo? fileInfo;
+            try
+            {
+                fileInfo = FilePathUtil.GetFileInfoForHash(_basePath, existingFile.Key);
+            }
+            catch
+            {
+                unavailableHashes.Add(existingFile.Key);
+                continue;
+            }
+
+            if (fileInfo == null || !fileInfo.Exists || fileInfo.Length != existingFile.Value.Size)
+            {
+                unavailableHashes.Add(existingFile.Key);
+            }
+        }
+
+        if (unavailableHashes.Count > 0)
+        {
+            try
+            {
+                bool isColdStorage = _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.UseColdStorage), false);
+
+                var affectedFiles = await dbContext.Files
+                    .Where(f => unavailableHashes.Contains(f.Hash) && f.Uploaded)
+                    .ToListAsync(HttpContext.RequestAborted)
+                    .ConfigureAwait(false);
+
+                foreach (var dbFile in affectedFiles)
+                {
+                    if (dbFile.Size > 0)
+                    {
+                        _metricsClient.DecGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalColdStorage : MetricsAPI.GaugeFilesTotal, 1);
+                        _metricsClient.DecGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalSizeColdStorage : MetricsAPI.GaugeFilesTotalSize, dbFile.Size);
+                    }
+
+                    dbFile.Uploaded = false;
+                    dbFile.Size = 0;
+                    dbFile.RawSize = 0;
+                }
+
+                var staleTransfers = await dbContext.PendingFileTransfers
+                    .Where(p => unavailableHashes.Contains(p.Hash))
+                    .ToListAsync(HttpContext.RequestAborted)
+                    .ConfigureAwait(false);
+
+                if (staleTransfers.Count > 0)
+                {
+                    dbContext.PendingFileTransfers.RemoveRange(staleTransfers);
+                }
+
+                if (affectedFiles.Count > 0 || staleTransfers.Count > 0)
+                {
+                    await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{user}|FilesSend: Failed to clean up unavailable hashes", SpheneUser);
+            }
+        }
 
         if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Any())
         {
@@ -201,6 +281,15 @@ public class ServerFilesController : ControllerBase
 
                 continue;
             }
+            if (unavailableHashes.Contains(hash))
+            {
+                notCoveredFiles[hash] = new UploadFileDto()
+                {
+                    Hash = hash,
+                };
+
+                continue;
+            }
             if (existingFiles.TryGetValue(hash, out var file) && file.Uploaded) { continue; }
 
             notCoveredFiles[hash] = new UploadFileDto()
@@ -209,17 +298,13 @@ public class ServerFilesController : ControllerBase
             };
         }
 
-        var hashesForNotification = notCoveredFiles.Values
-            .Where(v => !v.IsForbidden && !string.IsNullOrEmpty(v.Hash))
-            .Select(v => v.Hash)
+        var hashesForNotification = userSentHashes
+            .Where(h => !string.IsNullOrEmpty(h)
+                        && !forbiddenFiles.ContainsKey(h)
+                        && !unavailableHashes.Contains(h)
+                        && existingFiles.TryGetValue(h, out var file)
+                        && file.Uploaded)
             .ToList();
-
-        if (!hashesForNotification.Any())
-        {
-            hashesForNotification = userSentHashes
-                .Where(h => !forbiddenFiles.ContainsKey(h) && !string.IsNullOrEmpty(h))
-                .ToList();
-        }
 
         var recipientUids = filesSendDto.UIDs?.Distinct(StringComparer.Ordinal).ToList() ?? new List<string>();
 
@@ -246,7 +331,8 @@ public class ServerFilesController : ControllerBase
                         .ConfigureAwait(false);
                 }
 
-                var sender = new Sphene.API.Data.UserData(SpheneUser);
+                var senderAlias = string.IsNullOrWhiteSpace(SpheneAlias) ? null : SpheneAlias;
+                var sender = new Sphene.API.Data.UserData(SpheneUser, senderAlias);
                 var pendingTransfers = new List<PendingFileTransfer>();
 
                 foreach (var uid in recipientUids)
@@ -288,6 +374,7 @@ public class ServerFilesController : ControllerBase
                         {
                             RecipientUID = uid,
                             SenderUID = SpheneUser,
+                            SenderAlias = senderAlias,
                             Hash = singleHash,
                             ModFolderName = modFolderName,
                             ModInfo = singleModInfo
@@ -320,6 +407,42 @@ public class ServerFilesController : ControllerBase
         }
 
         return Ok(JsonSerializer.Serialize(notCoveredFiles.Values.ToList()));
+    }
+
+    private static string NormalizeHashForLookup(string hash)
+    {
+        if (string.IsNullOrWhiteSpace(hash))
+        {
+            return string.Empty;
+        }
+
+        if (hash.Length > 128)
+        {
+            return string.Empty;
+        }
+
+        Span<char> buffer = stackalloc char[hash.Length];
+        var length = 0;
+        foreach (var c in hash)
+        {
+            if (!char.IsAsciiLetterOrDigit(c))
+            {
+                continue;
+            }
+
+            buffer[length++] = char.ToUpperInvariant(c);
+            if (length > 40)
+            {
+                return string.Empty;
+            }
+        }
+
+        if (length != 40)
+        {
+            return string.Empty;
+        }
+
+        return new string(buffer[..length]);
     }
 
     [HttpGet(SpheneFiles.ServerFiles_ModHistory)]
@@ -427,6 +550,38 @@ public class ServerFilesController : ControllerBase
                         mod.Website,
                         history.SharedAt,
                         history.RecipientUID,
+                        user != null ? user.Alias : null,
+                        file.Size,
+                        file.RawSize);
+
+        var result = await query.ToListAsync().ConfigureAwait(false);
+
+        return Ok(JsonSerializer.Serialize(result));
+    }
+
+    [HttpGet(SpheneFiles.ServerFiles_ModReceivedHistory)]
+    public async Task<IActionResult> GetModReceivedHistoryForCurrentUser()
+    {
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync().ConfigureAwait(false);
+
+        var uid = SpheneUser;
+
+        var query = from history in dbContext.ModShareHistory.AsNoTracking()
+                    join file in dbContext.Files.AsNoTracking() on history.Hash equals file.Hash
+                    join mod in dbContext.ModFiles.AsNoTracking() on history.Hash equals mod.Hash
+                    join user in dbContext.Users.AsNoTracking() on history.SenderUID equals user.UID into users
+                    from user in users.DefaultIfEmpty()
+                    where history.RecipientUID == uid
+                    orderby history.SharedAt descending
+                    select new ModReceivedHistoryEntryDto(
+                        mod.Hash,
+                        mod.Name,
+                        mod.Author,
+                        mod.Version,
+                        mod.Description,
+                        mod.Website,
+                        history.SharedAt,
+                        history.SenderUID,
                         user != null ? user.Alias : null,
                         file.Size,
                         file.RawSize);
