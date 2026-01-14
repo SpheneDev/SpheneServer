@@ -369,6 +369,7 @@ public partial class SpheneHub
                 var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.DataHash)
                 {
                     Success = acknowledgmentDto.Success,
+                    ErrorCode = acknowledgmentDto.ErrorCode,
                     ErrorMessage = acknowledgmentDto.ErrorMessage,
                     AcknowledgedAt = acknowledgmentDto.AcknowledgedAt,
                     SessionId = acknowledgmentDto.SessionId
@@ -420,6 +421,7 @@ public partial class SpheneHub
             var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.DataHash)
             {
                 Success = acknowledgmentDto.Success,
+                ErrorCode = acknowledgmentDto.ErrorCode,
                 ErrorMessage = acknowledgmentDto.ErrorMessage,
                 AcknowledgedAt = acknowledgmentDto.AcknowledgedAt
             };
@@ -665,8 +667,8 @@ public partial class SpheneHub
             .Where(p => p.UserUID == UserUID || p.OtherUserUID == UserUID)
             .ToListAsync().ConfigureAwait(false);
             
-        var ownPermissions = allPermissions.Where(p => p.UserUID == UserUID).ToList();
-        var otherUsersPermissions = allPermissions.Where(p => p.OtherUserUID == UserUID).ToList();
+        var ownPermissions = allPermissions.Where(p => string.Equals(p.UserUID, UserUID, StringComparison.Ordinal)).ToList();
+        var otherUsersPermissions = allPermissions.Where(p => string.Equals(p.OtherUserUID, UserUID, StringComparison.Ordinal)).ToList();
             
         // Check if any permission actually needs to be updated
         bool statusChanged = ownPermissions.Any(p => p.AckYou != ackYou);
