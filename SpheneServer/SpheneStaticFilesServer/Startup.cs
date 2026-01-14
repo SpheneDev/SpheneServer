@@ -1,4 +1,4 @@
-﻿using SpheneShared.Data;
+using SpheneShared.Data;
 using SpheneShared.Metrics;
 using SpheneShared.Services;
 using SpheneShared.Utils;
@@ -21,6 +21,7 @@ using StackExchange.Redis;
 using System.Net;
 using System.Text;
 using SpheneShared.Utils.Configuration;
+using Npgsql;
 
 namespace SpheneStaticFilesServer;
 
@@ -100,9 +101,16 @@ public class Startup
             services.AddSingleton<IConfigurationService<StaticFilesServerConfiguration>, SpheneConfigurationServiceServer<StaticFilesServerConfiguration>>();
             services.AddSingleton<MainServerShardRegistrationService>();
             services.AddHostedService(s => s.GetRequiredService<MainServerShardRegistrationService>());
+
+            var connectionString = Configuration.GetConnectionString("DefaultConnection");
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+            dataSourceBuilder.EnableDynamicJson();
+            var dataSource = dataSourceBuilder.Build();
+            services.AddSingleton(dataSource);
+
             services.AddDbContextPool<SpheneDbContext>(options =>
             {
-                options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection"), builder =>
+                options.UseNpgsql(dataSource, builder =>
                 {
                     builder.MigrationsHistoryTable("_efmigrationshistory", "public");
                 }).UseSnakeCaseNamingConvention();
@@ -110,7 +118,7 @@ public class Startup
             }, spheneConfig.GetValue(nameof(SpheneConfigurationBase.DbContextPoolSize), 1024));
             services.AddDbContextFactory<SpheneDbContext>(options =>
             {
-                options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection"), builder =>
+                options.UseNpgsql(dataSource, builder =>
                 {
                     builder.MigrationsHistoryTable("_efmigrationshistory", "public");
                     builder.MigrationsAssembly("SpheneShared");
@@ -193,7 +201,10 @@ public class Startup
         services.AddMemoryCache();
 
         // controller setup
-        services.AddControllers().ConfigureApplicationPartManager(a =>
+        services.AddControllers().AddJsonOptions(options =>
+        {
+            options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        }).ConfigureApplicationPartManager(a =>
         {
             a.FeatureProviders.Remove(a.FeatureProviders.OfType<ControllerFeatureProvider>().First());
             if (_isMain)

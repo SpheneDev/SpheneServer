@@ -19,6 +19,7 @@ namespace SpheneServer.Hubs;
 public partial class SpheneHub
 {
     private static readonly string[] AllowedExtensionsForGamePaths = { ".mdl", ".tex", ".mtrl", ".tmb", ".pap", ".avfx", ".atex", ".sklb", ".eid", ".phyb", ".pbd", ".scd", ".skp", ".shpk" };
+    private static readonly Dictionary<string, bool> PenumbraReceivePreferences = new(StringComparer.Ordinal);
 
     [Authorize(Policy = "Identified")]
     public async Task UserAddPair(UserDto dto)
@@ -187,12 +188,38 @@ public partial class SpheneHub
         var pairs = await GetAllPairInfo(UserUID).ConfigureAwait(false);
         return pairs.Select(p =>
         {
+            bool otherAllowsMods = true;
+            if (PenumbraReceivePreferences.TryGetValue(p.Key, out var pref))
+            {
+                otherAllowsMods = pref;
+            }
             return new UserFullPairDto(new UserData(p.Key, p.Value.Alias),
                 p.Value.ToIndividualPairStatus(),
                 p.Value.GIDs.Where(g => !string.Equals(g, Constants.IndividualKeyword, StringComparison.OrdinalIgnoreCase)).ToList(),
                 p.Value.OwnPermissions.ToUserPermissions(setSticky: true),
-                p.Value.OtherPermissions.ToUserPermissions());
+                p.Value.OtherPermissions.ToUserPermissions(),
+                otherAllowsMods);
         }).ToList();
+    }
+
+    [Authorize(Policy = "Identified")]
+    public Task UserUpdatePenumbraReceivePreference(bool allowMods)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args("AllowReceivingPenumbraMods", allowMods));
+        PenumbraReceivePreferences[UserUID] = allowMods;
+        return NotifyPairedUsersAboutPenumbraPreferenceAsync(allowMods);
+    }
+
+    private async Task NotifyPairedUsersAboutPenumbraPreferenceAsync(bool allowMods)
+    {
+        var pairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+        if (pairedUsers.Count == 0)
+        {
+            return;
+        }
+
+        var dto = new UserPenumbraReceivePreferenceDto(new UserData(UserUID), allowMods);
+        await Clients.Users(pairedUsers).Client_UserPenumbraReceivePreferenceUpdate(dto).ConfigureAwait(false);
     }
 
     [Authorize(Policy = "Identified")]

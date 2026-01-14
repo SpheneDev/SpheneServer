@@ -1,4 +1,4 @@
-﻿using SpheneServices.Discord;
+using SpheneServices.Discord;
 using SpheneShared.Data;
 using SpheneShared.Metrics;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +7,7 @@ using SpheneShared.Utils;
 using SpheneShared.Services;
 using StackExchange.Redis;
 using SpheneShared.Utils.Configuration;
+using Npgsql;
 
 namespace SpheneServices;
 
@@ -31,9 +32,15 @@ public class Startup
     {
         var spheneConfig = Configuration.GetSection("Sphene");
 
+        var connectionString = Configuration.GetConnectionString("DefaultConnection");
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson();
+        var dataSource = dataSourceBuilder.Build();
+        services.AddSingleton(dataSource);
+
         services.AddDbContextPool<SpheneDbContext>(options =>
         {
-            options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection"), builder =>
+            options.UseNpgsql(dataSource, builder =>
             {
                 builder.MigrationsHistoryTable("_efmigrationshistory", "public");
             }).UseSnakeCaseNamingConvention();
@@ -41,7 +48,7 @@ public class Startup
         }, Configuration.GetValue(nameof(SpheneConfigurationBase.DbContextPoolSize), 1024));
         services.AddDbContextFactory<SpheneDbContext>(options =>
         {
-            options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection"), builder =>
+            options.UseNpgsql(dataSource, builder =>
             {
                 builder.MigrationsHistoryTable("_efmigrationshistory", "public");
                 builder.MigrationsAssembly("SpheneShared");

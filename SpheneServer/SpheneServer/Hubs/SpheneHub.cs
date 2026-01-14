@@ -213,6 +213,8 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
             }
         }
 
+        await CheckPendingFileTransfersAsync().ConfigureAwait(false);
+
         await base.OnConnectedAsync().ConfigureAwait(false);
     }
 

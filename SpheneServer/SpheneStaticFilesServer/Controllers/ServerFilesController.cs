@@ -1,6 +1,6 @@
-﻿using K4os.Compression.LZ4.Legacy;
-using Sphene.API.Dto.Files;
+using K4os.Compression.LZ4.Legacy;
 using SpheneFiles = Sphene.API.Routes.SpheneFiles;
+using Sphene.API.Data;
 using Sphene.API.SignalR;
 using SpheneServer.Hubs;
 using SpheneShared.Data;
@@ -13,6 +13,7 @@ using SpheneStaticFilesServer.Utils;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Sphene.API.Dto.Files;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -23,6 +24,7 @@ namespace SpheneStaticFilesServer.Controllers;
 [Route(SpheneFiles.ServerFiles)]
 public class ServerFilesController : ControllerBase
 {
+    private const long MaxUploadRequestSize = 1024L * 1024 * 1024;
     private static readonly SemaphoreSlim _fileLockDictLock = new(1);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fileUploadLocks = new(StringComparer.Ordinal);
     private readonly string _basePath;
@@ -133,11 +135,56 @@ public class ServerFilesController : ControllerBase
         using var dbContext = await _SpheneDbContext.CreateDbContextAsync();
 
         var userSentHashes = new HashSet<string>(filesSendDto.FileHashes.Distinct(StringComparer.Ordinal).Select(s => string.Concat(s.Where(c => char.IsLetterOrDigit(c)))), StringComparer.Ordinal);
-        var notCoveredFiles = new Dictionary<string, UploadFileDto>(StringComparer.Ordinal);
-        var forbiddenFiles = await dbContext.ForbiddenUploadEntries.AsNoTracking().Where(f => userSentHashes.Contains(f.Hash)).AsNoTracking().ToDictionaryAsync(f => f.Hash, f => f).ConfigureAwait(false);
-        var existingFiles = await dbContext.Files.AsNoTracking().Where(f => userSentHashes.Contains(f.Hash)).AsNoTracking().ToDictionaryAsync(f => f.Hash, f => f).ConfigureAwait(false);
+        _logger.LogInformation("{user}|FilesSend: requested upload for {hashCount} hashes to {uidCount} recipients", SpheneUser, userSentHashes.Count, filesSendDto.UIDs?.Count ?? 0);
+        
+        if (filesSendDto.ModInfo != null)
+        {
+             _logger.LogInformation("FilesSend: Received {count} ModInfo entries.", filesSendDto.ModInfo.Count);
+        }
+        else
+        {
+             _logger.LogInformation("FilesSend: No ModInfo received (null).");
+        }
 
-        List<FileCache> fileCachesToUpload = new();
+        var notCoveredFiles = new Dictionary<string, UploadFileDto>(StringComparer.Ordinal);
+        var forbiddenFiles = await dbContext.ForbiddenUploadEntries.AsNoTracking().Where(f => userSentHashes.Contains(f.Hash)).ToDictionaryAsync(f => f.Hash, f => f).ConfigureAwait(false);
+        var existingFiles = await dbContext.Files.AsNoTracking().Where(f => userSentHashes.Contains(f.Hash)).ToDictionaryAsync(f => f.Hash, f => f).ConfigureAwait(false);
+
+        if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Any())
+        {
+            foreach (var modInfo in filesSendDto.ModInfo)
+            {
+                var existingMod = await dbContext.ModFiles.FindAsync(modInfo.Hash);
+                if (existingMod == null)
+                {
+                    _logger.LogInformation("Adding new ModFile to DB: {hash}", modInfo.Hash);
+                    await dbContext.ModFiles.AddAsync(new ModFile
+                    {
+                        Hash = modInfo.Hash,
+                        Name = modInfo.Name,
+                        Author = modInfo.Author,
+                        Version = modInfo.Version,
+                        Description = modInfo.Description,
+                        Website = modInfo.Website,
+                        UploadedDate = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                     _logger.LogInformation("ModFile already exists for {hash}", modInfo.Hash);
+                }
+            }
+            try 
+            {
+                var changes = await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                _logger.LogInformation("Saved {changes} changes to ModFiles table.", changes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving ModFiles to database.");
+            }
+        }
+
         foreach (var hash in userSentHashes)
         {
             // Skip empty file hashes, duplicate file hashes, forbidden file hashes and existing file hashes
@@ -162,17 +209,441 @@ public class ServerFilesController : ControllerBase
             };
         }
 
-        if (notCoveredFiles.Any(p => !p.Value.IsForbidden))
+        var hashesForNotification = notCoveredFiles.Values
+            .Where(v => !v.IsForbidden && !string.IsNullOrEmpty(v.Hash))
+            .Select(v => v.Hash)
+            .ToList();
+
+        if (!hashesForNotification.Any())
         {
-            await _hubContext.Clients.Users(filesSendDto.UIDs).SendAsync(nameof(ISpheneHub.Client_UserReceiveUploadStatus), new Sphene.API.Dto.User.UserDto(new(SpheneUser)))
-                .ConfigureAwait(false);
+            hashesForNotification = userSentHashes
+                .Where(h => !forbiddenFiles.ContainsKey(h) && !string.IsNullOrEmpty(h))
+                .ToList();
+        }
+
+        var recipientUids = filesSendDto.UIDs?.Distinct(StringComparer.Ordinal).ToList() ?? new List<string>();
+
+        if (hashesForNotification.Any() && recipientUids.Any())
+        {
+            var isPenumbraModUpload = filesSendDto.ModFolderNames != null && filesSendDto.ModFolderNames.Count > 0;
+            Dictionary<string, string>? modFolderNamesLookup = null;
+            if (filesSendDto.ModFolderNames != null && filesSendDto.ModFolderNames.Count > 0)
+            {
+                modFolderNamesLookup = new Dictionary<string, string>(filesSendDto.ModFolderNames, StringComparer.OrdinalIgnoreCase);
+            }
+
+            if (isPenumbraModUpload)
+            {
+                recipientUids = await GetBidirectionalIndividualRecipientsAsync(dbContext, SpheneUser, recipientUids).ConfigureAwait(false);
+            }
+
+            if (recipientUids.Any())
+            {
+                if (!isPenumbraModUpload)
+                {
+                    await _hubContext.Clients.Users(recipientUids)
+                        .SendAsync(nameof(ISpheneHub.Client_UserReceiveUploadStatus), new Sphene.API.Dto.User.UserDto(new(SpheneUser)))
+                        .ConfigureAwait(false);
+                }
+
+                var sender = new Sphene.API.Data.UserData(SpheneUser);
+                var pendingTransfers = new List<PendingFileTransfer>();
+
+                foreach (var uid in recipientUids)
+                {
+                    foreach (var singleHash in hashesForNotification)
+                    {
+                        string? modFolderName = null;
+                        if (modFolderNamesLookup != null && modFolderNamesLookup.Count > 0)
+                        {
+                            modFolderNamesLookup.TryGetValue(singleHash, out modFolderName);
+                        }
+
+                        List<ModInfoDto>? singleModInfo = null;
+                        if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Count > 0)
+                        {
+                            var match = filesSendDto.ModInfo.FirstOrDefault(m => string.Equals(m.Hash, singleHash, StringComparison.OrdinalIgnoreCase));
+                            if (match != null)
+                            {
+                                singleModInfo = new List<ModInfoDto>(1) { match };
+                            }
+                        }
+
+                        var notification = new FileTransferNotificationDto
+                        {
+                            Sender = sender,
+                            Recipient = new Sphene.API.Data.UserData(uid),
+                            Hash = singleHash,
+                            FileName = string.Empty,
+                            ModFolderName = modFolderName,
+                            Description = "Files have been uploaded for you.",
+                            ModInfo = singleModInfo
+                        };
+
+                        await _hubContext.Clients.User(uid)
+                            .SendAsync(nameof(ISpheneHub.Client_UserReceiveFileNotification), notification)
+                            .ConfigureAwait(false);
+
+                        pendingTransfers.Add(new PendingFileTransfer
+                        {
+                            RecipientUID = uid,
+                            SenderUID = SpheneUser,
+                            Hash = singleHash,
+                            ModFolderName = modFolderName,
+                            ModInfo = singleModInfo
+                        });
+
+                        await dbContext.ModShareHistory.AddAsync(new ModShareHistory
+                        {
+                            SenderUID = SpheneUser,
+                            RecipientUID = uid,
+                            Hash = singleHash,
+                            SharedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+
+                if (pendingTransfers.Any())
+                {
+                    try
+                    {
+                        _logger.LogInformation("{user}|FilesSend: notifying {uidCount} recipients for {hashCount} hashes", SpheneUser, recipientUids.Count, hashesForNotification.Count);
+                        await dbContext.PendingFileTransfers.AddRangeAsync(pendingTransfers, HttpContext.RequestAborted).ConfigureAwait(false);
+                        await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "{user}|FilesSend: Failed to persist pending transfers/history", SpheneUser);
+                    }
+                }
+            }
         }
 
         return Ok(JsonSerializer.Serialize(notCoveredFiles.Values.ToList()));
     }
 
+    [HttpGet(SpheneFiles.ServerFiles_ModHistory)]
+    public async Task<IActionResult> GetModUploadHistoryForCurrentUser()
+    {
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync();
+
+        var uid = SpheneUser;
+
+        var query = from file in dbContext.Files.AsNoTracking()
+                    join mod in dbContext.ModFiles.AsNoTracking() on file.Hash equals mod.Hash
+                    where file.UploaderUID == uid
+                    orderby mod.UploadedDate descending
+                    select new ModUploadHistoryEntryDto(
+                        mod.Hash,
+                        mod.Name,
+                        mod.Author,
+                        mod.Version,
+                        mod.Description,
+                        mod.Website,
+                        mod.UploadedDate,
+                        file.UploaderUID,
+                        file.Size,
+                        file.RawSize);
+
+        var result = await query.ToListAsync().ConfigureAwait(false);
+
+        return Ok(JsonSerializer.Serialize(result));
+    }
+
+    [HttpGet(SpheneFiles.ServerFiles_ModHistory_All)]
+    [Microsoft.AspNetCore.Authorization.Authorize(Policy = "Internal")]
+    public async Task<IActionResult> GetModUploadHistoryForAll()
+    {
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync();
+
+        var query = from file in dbContext.Files.AsNoTracking()
+                    join mod in dbContext.ModFiles.AsNoTracking() on file.Hash equals mod.Hash
+                    orderby mod.UploadedDate descending
+                    select new ModUploadHistoryEntryDto(
+                        mod.Hash,
+                        mod.Name,
+                        mod.Author,
+                        mod.Version,
+                        mod.Description,
+                        mod.Website,
+                        mod.UploadedDate,
+                        file.UploaderUID,
+                        file.Size,
+                        file.RawSize);
+
+        var result = await query.ToListAsync().ConfigureAwait(false);
+
+        return Ok(JsonSerializer.Serialize(result));
+    }
+
+    [HttpGet(SpheneFiles.ServerFiles_ModDownloadHistory)]
+    public async Task<IActionResult> GetModDownloadHistoryForCurrentUser()
+    {
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync().ConfigureAwait(false);
+
+        var uid = SpheneUser;
+
+        var query = from history in dbContext.ModDownloadHistory.AsNoTracking()
+                    join file in dbContext.Files.AsNoTracking() on history.Hash equals file.Hash
+                    join mod in dbContext.ModFiles.AsNoTracking() on history.Hash equals mod.Hash
+                    where history.UserUID == uid
+                    orderby history.DownloadedAt descending
+                    select new ModDownloadHistoryEntryDto(
+                        mod.Hash,
+                        mod.Name,
+                        mod.Author,
+                        mod.Version,
+                        mod.Description,
+                        mod.Website,
+                        history.DownloadedAt,
+                        file.Size,
+                        file.RawSize);
+
+        var result = await query.ToListAsync().ConfigureAwait(false);
+
+        return Ok(JsonSerializer.Serialize(result));
+    }
+
+    [HttpGet(SpheneFiles.ServerFiles_ModShareHistory)]
+    public async Task<IActionResult> GetModShareHistoryForCurrentUser()
+    {
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync().ConfigureAwait(false);
+
+        var uid = SpheneUser;
+
+        var query = from history in dbContext.ModShareHistory.AsNoTracking()
+                    join file in dbContext.Files.AsNoTracking() on history.Hash equals file.Hash
+                    join mod in dbContext.ModFiles.AsNoTracking() on history.Hash equals mod.Hash
+                    join user in dbContext.Users.AsNoTracking() on history.RecipientUID equals user.UID into users
+                    from user in users.DefaultIfEmpty()
+                    where history.SenderUID == uid
+                    orderby history.SharedAt descending
+                    select new ModShareHistoryEntryDto(
+                        mod.Hash,
+                        mod.Name,
+                        mod.Author,
+                        mod.Version,
+                        mod.Description,
+                        mod.Website,
+                        history.SharedAt,
+                        history.RecipientUID,
+                        user != null ? user.Alias : null,
+                        file.Size,
+                        file.RawSize);
+
+        var result = await query.ToListAsync().ConfigureAwait(false);
+
+        return Ok(JsonSerializer.Serialize(result));
+    }
+
+    [HttpPost(SpheneFiles.ServerFiles_PenumbraBackups + "/" + SpheneFiles.ServerFiles_PenumbraBackups_Create)]
+    public async Task<IActionResult> CreatePenumbraModBackup([FromBody] PenumbraModBackupCreateDto dto)
+    {
+        if (dto == null)
+        {
+            return BadRequest();
+        }
+
+        var mods = dto.Mods ?? new List<PenumbraModBackupEntryDto>();
+        if (mods.Count == 0)
+        {
+            return BadRequest();
+        }
+
+        const int maxMods = 5000;
+        if (mods.Count > maxMods)
+        {
+            return BadRequest();
+        }
+
+        var normalizedMods = new List<PenumbraModBackupEntryDto>(mods.Count);
+        var hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in mods)
+        {
+            if (mod == null)
+            {
+                continue;
+            }
+
+            var hash = (mod.Hash ?? string.Empty).Trim().ToUpperInvariant();
+            if (hash.Length != 40 || !hash.All(char.IsAsciiLetterOrDigit))
+            {
+                continue;
+            }
+
+            hashes.Add(hash);
+
+            var folder = (mod.ModFolderName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                folder = hash;
+            }
+
+            var name = (mod.Name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = folder;
+            }
+
+            normalizedMods.Add(new PenumbraModBackupEntryDto(
+                hash,
+                folder,
+                name,
+                string.IsNullOrWhiteSpace(mod.Author) ? null : mod.Author,
+                string.IsNullOrWhiteSpace(mod.Version) ? null : mod.Version,
+                string.IsNullOrWhiteSpace(mod.Description) ? null : mod.Description,
+                string.IsNullOrWhiteSpace(mod.Website) ? null : mod.Website));
+        }
+
+        if (normalizedMods.Count == 0)
+        {
+            return BadRequest();
+        }
+
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync().ConfigureAwait(false);
+
+        var uploadedHashes = await dbContext.Files.AsNoTracking()
+            .Where(f => hashes.Contains(f.Hash) && f.Uploaded)
+            .Select(f => f.Hash)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        var uploaded = new HashSet<string>(uploadedHashes, StringComparer.OrdinalIgnoreCase);
+        var missing = hashes.Where(h => !uploaded.Contains(h)).Select(h => h.ToUpperInvariant()).ToList();
+
+        var backupName = (dto.BackupName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(backupName))
+        {
+            backupName = "Penumbra Backup";
+        }
+
+        var entity = new PenumbraModBackup
+        {
+            BackupId = Guid.NewGuid(),
+            UserUID = SpheneUser,
+            BackupName = backupName,
+            CreatedAt = DateTime.UtcNow,
+            IsComplete = missing.Count == 0,
+            ModCount = normalizedMods.Count,
+            Mods = normalizedMods
+        };
+
+        await dbContext.PenumbraModBackups.AddAsync(entity, HttpContext.RequestAborted).ConfigureAwait(false);
+        await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+
+        return Ok(JsonSerializer.Serialize(new PenumbraModBackupCreateResultDto(entity.BackupId, entity.IsComplete, missing)));
+    }
+
+    [HttpGet(SpheneFiles.ServerFiles_PenumbraBackups + "/" + SpheneFiles.ServerFiles_PenumbraBackups_List)]
+    public async Task<IActionResult> ListPenumbraModBackups()
+    {
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync().ConfigureAwait(false);
+
+        var uid = SpheneUser;
+
+        var backups = await dbContext.PenumbraModBackups.AsNoTracking()
+            .Where(b => b.UserUID == uid)
+            .OrderByDescending(b => b.CreatedAt)
+            .Select(b => new PenumbraModBackupSummaryDto(
+                b.BackupId,
+                b.BackupName,
+                b.CreatedAt,
+                b.ModCount,
+                b.IsComplete))
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return Ok(JsonSerializer.Serialize(backups));
+    }
+
+    [HttpGet(SpheneFiles.ServerFiles_PenumbraBackups + "/" + SpheneFiles.ServerFiles_PenumbraBackups_Get)]
+    public async Task<IActionResult> GetPenumbraModBackup([FromQuery] Guid backupId)
+    {
+        if (backupId == Guid.Empty)
+        {
+            return BadRequest();
+        }
+
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync().ConfigureAwait(false);
+
+        var uid = SpheneUser;
+
+        var backup = await dbContext.PenumbraModBackups.AsNoTracking()
+            .Where(b => b.UserUID == uid && b.BackupId == backupId)
+            .Select(b => new PenumbraModBackupDto(
+                b.BackupId,
+                b.BackupName,
+                b.CreatedAt,
+                b.IsComplete,
+                b.Mods))
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
+
+        if (backup == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(JsonSerializer.Serialize(backup));
+    }
+
+    [HttpPost(SpheneFiles.ServerFiles_PenumbraBackups + "/" + SpheneFiles.ServerFiles_PenumbraBackups_Delete)]
+    public async Task<IActionResult> DeletePenumbraModBackup([FromQuery] Guid backupId)
+    {
+        if (backupId == Guid.Empty)
+        {
+            return BadRequest();
+        }
+
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync().ConfigureAwait(false);
+
+        var uid = SpheneUser;
+
+        var entity = await dbContext.PenumbraModBackups
+            .SingleOrDefaultAsync(b => b.UserUID == uid && b.BackupId == backupId, HttpContext.RequestAborted)
+            .ConfigureAwait(false);
+
+        if (entity == null)
+        {
+            return NotFound();
+        }
+
+        dbContext.PenumbraModBackups.Remove(entity);
+        await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+        return Ok();
+    }
+
+    private static async Task<List<string>> GetBidirectionalIndividualRecipientsAsync(SpheneDbContext dbContext, string senderUid, IReadOnlyCollection<string> recipientUids)
+    {
+        if (recipientUids.Count == 0)
+        {
+            return new List<string>();
+        }
+
+        var recipients = new HashSet<string>(recipientUids, StringComparer.Ordinal);
+
+        var pairs = await dbContext.ClientPairs.AsNoTracking()
+            .Where(cp => (cp.UserUID == senderUid && recipients.Contains(cp.OtherUserUID)) ||
+                         (cp.OtherUserUID == senderUid && recipients.Contains(cp.UserUID)))
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        List<string> validRecipients = new();
+        foreach (var uid in recipients)
+        {
+            bool hasForward = pairs.Any(p => p.UserUID == senderUid && p.OtherUserUID == uid);
+            bool hasReverse = pairs.Any(p => p.UserUID == uid && p.OtherUserUID == senderUid);
+            if (hasForward && hasReverse)
+            {
+                validRecipients.Add(uid);
+            }
+        }
+
+        return validRecipients;
+    }
+
     [HttpPost(SpheneFiles.ServerFiles_Upload + "/{hash}")]
-    [RequestSizeLimit(200 * 1024 * 1024)]
+    [RequestSizeLimit(MaxUploadRequestSize)]
     public async Task<IActionResult> UploadFile(string hash, CancellationToken requestAborted)
     {
         using var dbContext = await _SpheneDbContext.CreateDbContextAsync();
@@ -227,7 +698,7 @@ public class ServerFilesController : ControllerBase
     }
 
     [HttpPost(SpheneFiles.ServerFiles_UploadMunged + "/{hash}")]
-    [RequestSizeLimit(200 * 1024 * 1024)]
+    [RequestSizeLimit(MaxUploadRequestSize)]
     public async Task<IActionResult> UploadFileMunged(string hash, CancellationToken requestAborted)
     {
         using var dbContext = await _SpheneDbContext.CreateDbContextAsync();

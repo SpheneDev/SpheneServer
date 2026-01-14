@@ -25,6 +25,7 @@ using SpheneServer.Controllers;
 using SpheneShared.RequirementHandlers;
 using SpheneShared.Utils.Configuration;
 using Sphene.SpheneServer.Services;
+using Npgsql;
 
 namespace SpheneServer;
 
@@ -257,9 +258,15 @@ public class Startup
 
     private void ConfigureDatabase(IServiceCollection services, IConfigurationSection spheneConfig)
     {
+        var connectionString = Configuration.GetConnectionString("DefaultConnection");
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson();
+        var dataSource = dataSourceBuilder.Build();
+        services.AddSingleton(dataSource);
+
         services.AddDbContextPool<SpheneDbContext>(options =>
         {
-            options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection"), builder =>
+            options.UseNpgsql(dataSource, builder =>
             {
                 builder.MigrationsHistoryTable("_efmigrationshistory", "public");
                 builder.MigrationsAssembly("SpheneShared");
@@ -269,7 +276,7 @@ public class Startup
         }, spheneConfig.GetValue(nameof(SpheneConfigurationBase.DbContextPoolSize), 1024));
         services.AddDbContextFactory<SpheneDbContext>(options =>
         {
-            options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection"), builder =>
+            options.UseNpgsql(dataSource, builder =>
             {
                 builder.MigrationsHistoryTable("_efmigrationshistory", "public");
                 builder.MigrationsAssembly("SpheneShared");

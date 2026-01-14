@@ -67,15 +67,34 @@ public class SpheneDbContext : DbContext
     public DbSet<AreaBoundSyncshellConsent> AreaBoundSyncshellConsents { get; set; }
     public DbSet<SyncshellWelcomePage> SyncshellWelcomePages { get; set; }
     public DbSet<UserHousingProperty> UserHousingProperties { get; set; }
+    public DbSet<ModFile> ModFiles { get; set; }
+    public DbSet<ModDownloadHistory> ModDownloadHistory { get; set; }
+    public DbSet<ModShareHistory> ModShareHistory { get; set; }
+    public DbSet<PendingFileTransfer> PendingFileTransfers { get; set; }
+    public DbSet<PenumbraModBackup> PenumbraModBackups { get; set; }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        mb.Entity<ModFile>().ToTable("mod_files");
+        mb.Entity<ModFile>().HasKey(m => m.Hash);
+
         mb.Entity<Auth>().ToTable("auth");
         mb.Entity<Auth>().HasOne(a => a.User).WithMany().HasForeignKey(a => a.UserUID).HasConstraintName("fk_auth_users_user_uid");
         mb.Entity<Auth>().HasOne(a => a.PrimaryUser).WithMany().HasForeignKey(a => a.PrimaryUserUID).HasConstraintName("fk_auth_users_primary_user_uid");
         mb.Entity<User>().ToTable("users");
         mb.Entity<FileCache>().ToTable("file_caches");
         mb.Entity<FileCache>().HasIndex(c => c.UploaderUID);
+        mb.Entity<ModDownloadHistory>().ToTable("mod_download_history");
+        mb.Entity<ModDownloadHistory>().HasKey(h => h.Id);
+        mb.Entity<ModDownloadHistory>().HasIndex(h => h.UserUID);
+        mb.Entity<ModDownloadHistory>().HasIndex(h => h.Hash);
+        mb.Entity<ModDownloadHistory>().HasIndex(h => h.DownloadedAt);
+        mb.Entity<ModShareHistory>().ToTable("mod_share_history");
+        mb.Entity<ModShareHistory>().HasKey(h => h.Id);
+        mb.Entity<ModShareHistory>().HasIndex(h => h.SenderUID);
+        mb.Entity<ModShareHistory>().HasIndex(h => h.RecipientUID);
+        mb.Entity<ModShareHistory>().HasIndex(h => h.Hash);
+        mb.Entity<ModShareHistory>().HasIndex(h => h.SharedAt);
         mb.Entity<ClientPair>().ToTable("client_pairs");
         mb.Entity<ClientPair>().HasKey(u => new { u.UserUID, u.OtherUserUID });
         mb.Entity<ClientPair>().HasIndex(c => c.UserUID);
@@ -188,5 +207,14 @@ public class SpheneDbContext : DbContext
         mb.Entity<UserHousingProperty>().HasOne(p => p.User).WithMany().HasForeignKey(p => p.UserUID).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserHousingProperty>().HasIndex(p => p.UserUID);
         mb.Entity<UserHousingProperty>().HasIndex(p => new { p.UserUID, p.ServerId, p.TerritoryId, p.WardId, p.HouseId, p.RoomId }).IsUnique();
+        
+        mb.Entity<PendingFileTransfer>().ToTable("pending_file_transfers");
+        mb.Entity<PendingFileTransfer>().HasKey(p => p.Id);
+        mb.Entity<PendingFileTransfer>().HasIndex(p => p.RecipientUID);
+
+        mb.Entity<PenumbraModBackup>().ToTable("penumbra_mod_backups");
+        mb.Entity<PenumbraModBackup>().HasKey(b => b.BackupId);
+        mb.Entity<PenumbraModBackup>().HasIndex(b => b.UserUID);
+        mb.Entity<PenumbraModBackup>().HasIndex(b => b.CreatedAt);
     }
 }

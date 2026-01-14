@@ -18,6 +18,7 @@ using Microsoft.EntityFrameworkCore;
 using Prometheus;
 using SpheneShared.Utils.Configuration;
 using StackExchange.Redis.Extensions.Core.Abstractions;
+using Npgsql;
 
 namespace SpheneAuthService;
 
@@ -198,9 +199,15 @@ public class Startup
 
     private void ConfigureDatabase(IServiceCollection services, IConfigurationSection spheneConfig)
     {
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson();
+        var dataSource = dataSourceBuilder.Build();
+        services.AddSingleton(dataSource);
+
         services.AddDbContextPool<SpheneDbContext>(options =>
         {
-            options.UseNpgsql(_configuration.GetConnectionString("DefaultConnection"), builder =>
+            options.UseNpgsql(dataSource, builder =>
             {
                 builder.MigrationsHistoryTable("_efmigrationshistory", "public");
                 builder.MigrationsAssembly("SpheneShared");
@@ -209,7 +216,7 @@ public class Startup
         }, spheneConfig.GetValue(nameof(SpheneConfigurationBase.DbContextPoolSize), 1024));
         services.AddDbContextFactory<SpheneDbContext>(options =>
         {
-            options.UseNpgsql(_configuration.GetConnectionString("DefaultConnection"), builder =>
+            options.UseNpgsql(dataSource, builder =>
             {
                 builder.MigrationsHistoryTable("_efmigrationshistory", "public");
                 builder.MigrationsAssembly("SpheneShared");
