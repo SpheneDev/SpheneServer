@@ -12,10 +12,12 @@ public class UserPermissionQuery
     public bool? OwnpermDisableAnimations { get; set; }
     public bool? OwnpermDisableSounds { get; set; }
     public bool? OwnpermDisableVFX { get; set; }
+    public bool? OwnpermDisableVFXInDuty { get; set; }
     public bool? OtherpermIsPaused { get; set; }
     public bool? OtherpermDisableAnimations { get; set; }
     public bool? OtherpermDisableSounds { get; set; }
     public bool? OtherpermDisableVFX { get; set; }
+    public bool? OtherpermDisableVFXInDuty { get; set; }
 
     public UserPermissionSet? OwnPermissions => OwnpermSticky == null ? null : new UserPermissionSet
     {
@@ -25,6 +27,7 @@ public class UserPermissionQuery
         DisableAnimations = OwnpermDisableAnimations.Value,
         DisableSounds = OwnpermDisableSounds.Value,
         DisableVFX = OwnpermDisableVFX.Value,
+        DisableVFXInDuty = OwnpermDisableVFXInDuty.Value,
         Sticky = OwnpermSticky.Value
     };
 
@@ -36,5 +39,6 @@ public class UserPermissionQuery
         DisableAnimations = OtherpermDisableAnimations ?? false,
         DisableSounds = OtherpermDisableSounds ?? false,
         DisableVFX = OtherpermDisableVFX ?? false,
+        DisableVFXInDuty = OtherpermDisableVFXInDuty ?? false,
     };
 }

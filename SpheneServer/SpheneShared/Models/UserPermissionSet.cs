@@ -14,6 +14,7 @@ public class UserPermissionSet
     public bool IsPaused { get; set; } = false;
     public bool DisableAnimations { get; set; } = false;
     public bool DisableVFX { get; set; } = false;
+    public bool DisableVFXInDuty { get; set; } = false;
     public bool DisableSounds { get; set; } = false;
     public bool AckYou { get; set; } = false;
 }
