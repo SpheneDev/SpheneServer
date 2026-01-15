@@ -8,6 +8,32 @@ namespace SpheneServer.Hubs;
 
 public partial class SpheneHub
 {
+    private static string NormalizeHash(string hash)
+    {
+        if (string.IsNullOrWhiteSpace(hash) || hash.Length > 128)
+        {
+            return string.Empty;
+        }
+
+        Span<char> buffer = stackalloc char[hash.Length];
+        var length = 0;
+        foreach (var c in hash)
+        {
+            if (!char.IsAsciiLetterOrDigit(c))
+            {
+                continue;
+            }
+
+            buffer[length++] = char.ToUpperInvariant(c);
+            if (length > 40)
+            {
+                return string.Empty;
+            }
+        }
+
+        return length == 40 ? new string(buffer[..length]) : string.Empty;
+    }
+
     private async Task CheckPendingFileTransfersAsync()
     {
         var pendingTransfers = await DbContext.PendingFileTransfers
@@ -33,8 +59,18 @@ public partial class SpheneHub
 
     public async Task UserAckFileTransfer(string hash, string senderUid)
     {
+        var normalizedHash = NormalizeHash(hash);
+        if (string.IsNullOrEmpty(normalizedHash))
+        {
+            return;
+        }
+
+        senderUid ??= string.Empty;
+
         var pendingTransfers = await DbContext.PendingFileTransfers
-            .Where(p => p.RecipientUID == UserUID && p.SenderUID == senderUid && p.Hash == hash)
+            .Where(p => p.RecipientUID == UserUID
+                && (string.IsNullOrEmpty(senderUid) || p.SenderUID == senderUid)
+                && (p.Hash == normalizedHash || p.Hash.ToUpper() == normalizedHash))
             .ToListAsync();
 
         if (pendingTransfers.Any())

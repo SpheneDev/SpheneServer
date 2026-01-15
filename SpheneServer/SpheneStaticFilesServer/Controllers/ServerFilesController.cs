@@ -310,7 +310,22 @@ public class ServerFilesController : ControllerBase
 
         if (hashesForNotification.Any() && recipientUids.Any())
         {
+            try
+            {
+                var cutoff = DateTime.UtcNow.AddDays(-14);
+                await dbContext.PendingFileTransfers
+                    .Where(p => p.CreatedAt < cutoff)
+                    .ExecuteDeleteAsync(HttpContext.RequestAborted)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "{user}|FilesSend: Failed to cleanup old pending transfers", SpheneUser);
+            }
+
             var isPenumbraModUpload = filesSendDto.ModFolderNames != null && filesSendDto.ModFolderNames.Count > 0;
+            var isModTransferRequest = (filesSendDto.ModFolderNames != null && filesSendDto.ModFolderNames.Count > 0)
+                || (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Count > 0);
             Dictionary<string, string>? modFolderNamesLookup = null;
             if (filesSendDto.ModFolderNames != null && filesSendDto.ModFolderNames.Count > 0)
             {
@@ -333,74 +348,115 @@ public class ServerFilesController : ControllerBase
 
                 var senderAlias = string.IsNullOrWhiteSpace(SpheneAlias) ? null : SpheneAlias;
                 var sender = new Sphene.API.Data.UserData(SpheneUser, senderAlias);
-                var pendingTransfers = new List<PendingFileTransfer>();
-
-                foreach (var uid in recipientUids)
+                if (isModTransferRequest)
                 {
-                    foreach (var singleHash in hashesForNotification)
-                    {
-                        string? modFolderName = null;
-                        if (modFolderNamesLookup != null && modFolderNamesLookup.Count > 0)
-                        {
-                            modFolderNamesLookup.TryGetValue(singleHash, out modFolderName);
-                        }
+                    var pendingTransfers = new List<PendingFileTransfer>();
+                    var normalizedHashes = hashesForNotification
+                        .Select(NormalizeHashForLookup)
+                        .Where(h => !string.IsNullOrEmpty(h))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
 
-                        List<ModInfoDto>? singleModInfo = null;
-                        if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Count > 0)
-                        {
-                            var match = filesSendDto.ModInfo.FirstOrDefault(m => string.Equals(m.Hash, singleHash, StringComparison.OrdinalIgnoreCase));
-                            if (match != null)
-                            {
-                                singleModInfo = new List<ModInfoDto>(1) { match };
-                            }
-                        }
-
-                        var notification = new FileTransferNotificationDto
-                        {
-                            Sender = sender,
-                            Recipient = new Sphene.API.Data.UserData(uid),
-                            Hash = singleHash,
-                            FileName = string.Empty,
-                            ModFolderName = modFolderName,
-                            Description = "Files have been uploaded for you.",
-                            ModInfo = singleModInfo
-                        };
-
-                        await _hubContext.Clients.User(uid)
-                            .SendAsync(nameof(ISpheneHub.Client_UserReceiveFileNotification), notification)
-                            .ConfigureAwait(false);
-
-                        pendingTransfers.Add(new PendingFileTransfer
-                        {
-                            RecipientUID = uid,
-                            SenderUID = SpheneUser,
-                            SenderAlias = senderAlias,
-                            Hash = singleHash,
-                            ModFolderName = modFolderName,
-                            ModInfo = singleModInfo
-                        });
-
-                        await dbContext.ModShareHistory.AddAsync(new ModShareHistory
-                        {
-                            SenderUID = SpheneUser,
-                            RecipientUID = uid,
-                            Hash = singleHash,
-                            SharedAt = DateTime.UtcNow
-                        });
-                    }
-                }
-
-                if (pendingTransfers.Any())
-                {
+                    HashSet<(string RecipientUID, string Hash)> existingPendingTransfers = new();
                     try
                     {
-                        _logger.LogInformation("{user}|FilesSend: notifying {uidCount} recipients for {hashCount} hashes", SpheneUser, recipientUids.Count, hashesForNotification.Count);
-                        await dbContext.PendingFileTransfers.AddRangeAsync(pendingTransfers, HttpContext.RequestAborted).ConfigureAwait(false);
-                        await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+                        var existingTransfers = await dbContext.PendingFileTransfers
+                            .AsNoTracking()
+                            .Where(p => p.SenderUID == SpheneUser
+                                && recipientUids.Contains(p.RecipientUID)
+                                && (normalizedHashes.Contains(p.Hash) || normalizedHashes.Contains(p.Hash.ToUpper())))
+                            .Select(p => new { p.RecipientUID, p.Hash })
+                            .ToListAsync(HttpContext.RequestAborted)
+                            .ConfigureAwait(false);
+
+                        existingPendingTransfers = existingTransfers
+                            .Select(t => (t.RecipientUID, NormalizeHashForLookup(t.Hash)))
+                            .Where(t => !string.IsNullOrEmpty(t.Item2))
+                            .ToHashSet();
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "{user}|FilesSend: Failed to persist pending transfers/history", SpheneUser);
+                        _logger.LogDebug(ex, "{user}|FilesSend: Failed to query existing pending transfers", SpheneUser);
+                    }
+
+                    foreach (var uid in recipientUids)
+                    {
+                        foreach (var singleHash in hashesForNotification)
+                        {
+                            var normalizedHash = NormalizeHashForLookup(singleHash);
+                            if (string.IsNullOrEmpty(normalizedHash))
+                            {
+                                continue;
+                            }
+
+                            if (existingPendingTransfers.Contains((uid, normalizedHash)))
+                            {
+                                continue;
+                            }
+
+                            string? modFolderName = null;
+                            if (modFolderNamesLookup != null && modFolderNamesLookup.Count > 0)
+                            {
+                                modFolderNamesLookup.TryGetValue(singleHash, out modFolderName);
+                            }
+
+                            List<ModInfoDto>? singleModInfo = null;
+                            if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Count > 0)
+                            {
+                                var match = filesSendDto.ModInfo.FirstOrDefault(m => string.Equals(m.Hash, singleHash, StringComparison.OrdinalIgnoreCase));
+                                if (match != null)
+                                {
+                                    singleModInfo = new List<ModInfoDto>(1) { match };
+                                }
+                            }
+
+                            var notification = new FileTransferNotificationDto
+                            {
+                                Sender = sender,
+                                Recipient = new Sphene.API.Data.UserData(uid),
+                                Hash = normalizedHash,
+                                FileName = string.Empty,
+                                ModFolderName = modFolderName,
+                                Description = "Files have been uploaded for you.",
+                                ModInfo = singleModInfo
+                            };
+
+                            await _hubContext.Clients.User(uid)
+                                .SendAsync(nameof(ISpheneHub.Client_UserReceiveFileNotification), notification)
+                                .ConfigureAwait(false);
+
+                            pendingTransfers.Add(new PendingFileTransfer
+                            {
+                                RecipientUID = uid,
+                                SenderUID = SpheneUser,
+                                SenderAlias = senderAlias,
+                                Hash = normalizedHash,
+                                ModFolderName = modFolderName,
+                                ModInfo = singleModInfo
+                            });
+
+                            await dbContext.ModShareHistory.AddAsync(new ModShareHistory
+                            {
+                                SenderUID = SpheneUser,
+                                RecipientUID = uid,
+                                Hash = normalizedHash,
+                                SharedAt = DateTime.UtcNow
+                            });
+                        }
+                    }
+
+                    if (pendingTransfers.Any())
+                    {
+                        try
+                        {
+                            _logger.LogInformation("{user}|FilesSend: notifying {uidCount} recipients for {hashCount} hashes", SpheneUser, recipientUids.Count, hashesForNotification.Count);
+                            await dbContext.PendingFileTransfers.AddRangeAsync(pendingTransfers, HttpContext.RequestAborted).ConfigureAwait(false);
+                            await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "{user}|FilesSend: Failed to persist pending transfers/history", SpheneUser);
+                        }
                     }
                 }
             }
