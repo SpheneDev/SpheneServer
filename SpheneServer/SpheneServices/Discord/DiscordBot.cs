@@ -9,6 +9,11 @@ using SpheneShared.Utils.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
 using StackExchange.Redis;
+using System.Net;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace SpheneServices.Discord;
 
@@ -24,6 +29,16 @@ internal class DiscordBot : IHostedService
     private InteractionService _interactionModule;
     private readonly CancellationTokenSource? _processReportQueueCts;
     private CancellationTokenSource? _clientConnectedCts;
+    private readonly HttpClient _httpClient = new();
+    private const string ChangelogUrl = "https://sphene.online/sphene/changelog.json";
+    private const string PluginMasterUrl = "https://raw.githubusercontent.com/SpheneDev/repo/refs/heads/main/plogonmaster.json";
+    private static readonly TimeSpan ChangelogPollInterval = TimeSpan.FromSeconds(30);
+    private static readonly RedisKey LastPostedReleaseKey = new RedisKey("discord:changelog:lastPosted:release");
+    private static readonly RedisKey LastPostedTestBuildKey = new RedisKey("discord:changelog:lastPosted:testbuild");
+    private static readonly RedisKey LastPostedReleaseHashKey = new RedisKey("discord:changelog:lastPostedHash:release");
+    private static readonly RedisKey LastPostedTestBuildHashKey = new RedisKey("discord:changelog:lastPostedHash:testbuild");
+    private static readonly RedisKey LastPostedReleaseMessageIdKey = new RedisKey("discord:changelog:lastPostedMessageId:release");
+    private static readonly RedisKey LastPostedTestBuildMessageIdKey = new RedisKey("discord:changelog:lastPostedMessageId:testbuild");
 
     public DiscordBot(DiscordBotServices botServices, IServiceProvider services, IConfigurationService<ServicesConfiguration> configuration,
         IDbContextFactory<SpheneDbContext> dbContextFactory,
@@ -47,6 +62,11 @@ internal class DiscordBot : IHostedService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var token = _configurationService.GetValueOrDefault(nameof(ServicesConfiguration.DiscordBotToken), string.Empty);
+        token = token.Trim().Trim('"');
+        if (token.StartsWith("Bot ", StringComparison.OrdinalIgnoreCase))
+        {
+            token = token[4..].Trim();
+        }
         if (!string.IsNullOrEmpty(token))
         {
             _logger.LogInformation("Starting DiscordBot");
@@ -102,6 +122,8 @@ internal class DiscordBot : IHostedService
             await _discordClient.StopAsync().ConfigureAwait(false);
             _interactionModule?.Dispose();
         }
+
+        _httpClient.Dispose();
     }
 
     private async Task DiscordClient_Ready()
@@ -119,6 +141,7 @@ internal class DiscordBot : IHostedService
         _ = UpdateVanityRoles(guild, _clientConnectedCts.Token);
         _ = RemoveUsersNotInVanityRole(_clientConnectedCts.Token);
         _ = RemoveUnregisteredUsers(_clientConnectedCts.Token);
+        _ = MonitorChangelogPostsAsync(_clientConnectedCts.Token);
     }
 
     private async Task UpdateVanityRoles(RestGuild guild, CancellationToken token)
@@ -441,5 +464,624 @@ internal class DiscordBot : IHostedService
             await _discordClient.SetActivityAsync(new CustomStatusGame("Your Registration Hub")).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         }
+    }
+
+    private async Task MonitorChangelogPostsAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await CheckAndPostChangelogAsync(token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Changelog monitor failed");
+            }
+
+            await Task.Delay(ChangelogPollInterval, token).ConfigureAwait(false);
+        }
+    }
+
+    private async Task CheckAndPostChangelogAsync(CancellationToken token)
+    {
+        var releaseChannelId = _configurationService.GetValueOrDefault<ulong?>(nameof(ServicesConfiguration.DiscordChannelForReleaseChangelogs), null);
+        var testBuildChannelId = _configurationService.GetValueOrDefault<ulong?>(nameof(ServicesConfiguration.DiscordChannelForTestBuildChangelogs), null);
+        if (releaseChannelId == null && testBuildChannelId == null)
+        {
+            return;
+        }
+
+        var pluginMaster = await TryFetchPluginMasterAsync(token).ConfigureAwait(false);
+        if (pluginMaster == null)
+        {
+            return;
+        }
+
+        var release = pluginMaster.Value.Release;
+        var testBuild = pluginMaster.Value.TestBuild;
+
+        using var changelogDoc = await TryFetchChangelogJsonAsync(token).ConfigureAwait(false);
+        if (changelogDoc == null)
+        {
+            return;
+        }
+
+        if (releaseChannelId != null && release.Version != null && release.DownloadUrl != null)
+        {
+            await TryPostSingleChangelogAsync(
+                channelId: releaseChannelId.Value,
+                changelogDoc: changelogDoc,
+                expectedVersion: release.Version,
+                expectedIsPrerelease: false,
+                expectedDownloadUrl: release.DownloadUrl,
+                lastPostedRedisKey: LastPostedReleaseKey,
+                lastPostedHashRedisKey: LastPostedReleaseHashKey,
+                lastPostedMessageIdRedisKey: LastPostedReleaseMessageIdKey,
+                token).ConfigureAwait(false);
+        }
+
+        if (testBuildChannelId != null && testBuild.Version != null && testBuild.DownloadUrl != null)
+        {
+            await TryPostSingleChangelogAsync(
+                channelId: testBuildChannelId.Value,
+                changelogDoc: changelogDoc,
+                expectedVersion: testBuild.Version,
+                expectedIsPrerelease: true,
+                expectedDownloadUrl: testBuild.DownloadUrl,
+                lastPostedRedisKey: LastPostedTestBuildKey,
+                lastPostedHashRedisKey: LastPostedTestBuildHashKey,
+                lastPostedMessageIdRedisKey: LastPostedTestBuildMessageIdKey,
+                token).ConfigureAwait(false);
+        }
+    }
+
+    private async Task TryPostSingleChangelogAsync(
+        ulong channelId,
+        JsonDocument changelogDoc,
+        string expectedVersion,
+        bool expectedIsPrerelease,
+        string expectedDownloadUrl,
+        RedisKey lastPostedRedisKey,
+        RedisKey lastPostedHashRedisKey,
+        RedisKey lastPostedMessageIdRedisKey,
+        CancellationToken token)
+    {
+        if (!TryFindChangelogEntry(changelogDoc, expectedVersion, expectedIsPrerelease, out var entry))
+        {
+            return;
+        }
+
+        var buildAvailable = await IsUrlAvailableAsync(expectedDownloadUrl, token).ConfigureAwait(false);
+        if (!buildAvailable)
+        {
+            return;
+        }
+
+        var channel = await _discordClient.GetChannelAsync(channelId).ConfigureAwait(false) as IMessageChannel;
+        if (channel == null)
+        {
+            return;
+        }
+
+        var db = _connectionMultiplexer.GetDatabase();
+        var expectedEmbedTitle = $"{(expectedIsPrerelease ? "Sphene Testbuild" : "Sphene Release")} {expectedVersion}";
+        var expectedFooterPrefix = BuildChangelogFooterPrefix(expectedVersion, expectedIsPrerelease);
+        var (embed, fingerprint) = BuildChangelogEmbedWithFingerprint(entry, expectedVersion, expectedIsPrerelease);
+
+        var lastPosted = await db.StringGetAsync(lastPostedRedisKey).ConfigureAwait(false);
+        var lastPostedHash = await db.StringGetAsync(lastPostedHashRedisKey).ConfigureAwait(false);
+        var lastPostedMessageIdRaw = await db.StringGetAsync(lastPostedMessageIdRedisKey).ConfigureAwait(false);
+
+        if (!lastPosted.IsNullOrEmpty && string.Equals(lastPosted.ToString(), expectedVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!lastPostedMessageIdRaw.IsNullOrEmpty && ulong.TryParse(lastPostedMessageIdRaw.ToString(), out var msgId))
+            {
+                var message = await channel.GetMessageAsync(msgId).ConfigureAwait(false) as IUserMessage;
+                if (message != null)
+                {
+                    var existingEmbed = message.Embeds.FirstOrDefault(e => FooterMatches(e.Footer?.Text, expectedFooterPrefix))
+                                       ?? message.Embeds.FirstOrDefault(e => string.Equals(e.Title, expectedEmbedTitle, StringComparison.OrdinalIgnoreCase));
+                    var existingFingerprint = TryExtractChangelogFingerprint(existingEmbed?.Footer?.Text);
+                    if (string.Equals(existingFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
+                        return;
+                    }
+
+                    await message.ModifyAsync(p => p.Embed = embed).ConfigureAwait(false);
+                    await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            var found = await TryFindChangelogMessageAsync(channel, expectedFooterPrefix, expectedEmbedTitle, token).ConfigureAwait(false);
+            if (found != null)
+            {
+                var (existingMessage, existingFingerprint) = found.Value;
+                if (!string.Equals(existingFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
+                {
+                    await existingMessage.ModifyAsync(p => p.Embed = embed).ConfigureAwait(false);
+                }
+
+                await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
+                await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
+                await db.StringSetAsync(lastPostedMessageIdRedisKey, existingMessage.Id.ToString()).ConfigureAwait(false);
+                return;
+            }
+
+            var reposted = await channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
+            await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
+            await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
+            await db.StringSetAsync(lastPostedMessageIdRedisKey, reposted.Id.ToString()).ConfigureAwait(false);
+            return;
+        }
+
+        if (!lastPostedHash.IsNullOrEmpty && string.Equals(lastPostedHash.ToString(), fingerprint, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var posted = await channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
+        await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
+        await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
+        await db.StringSetAsync(lastPostedMessageIdRedisKey, posted.Id.ToString()).ConfigureAwait(false);
+    }
+
+    private async Task<(IUserMessage Message, string? Fingerprint)?> TryFindChangelogMessageAsync(IMessageChannel channel, string expectedFooterPrefix, string expectedEmbedTitle, CancellationToken token)
+    {
+        var botUserId = _discordClient.CurrentUser?.Id;
+        try
+        {
+            var messages = await channel.GetMessagesAsync(100).FlattenAsync().ConfigureAwait(false);
+            foreach (var message in messages)
+            {
+                token.ThrowIfCancellationRequested();
+
+                if (botUserId != null && message.Author.Id != botUserId.Value)
+                {
+                    continue;
+                }
+
+                foreach (var embed in message.Embeds)
+                {
+                    if (FooterMatches(embed.Footer?.Text, expectedFooterPrefix) ||
+                        string.Equals(embed.Title, expectedEmbedTitle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (message is IUserMessage userMessage)
+                        {
+                            return (userMessage, TryExtractChangelogFingerprint(embed.Footer?.Text));
+                        }
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to check channel history for changelog post");
+        }
+
+        return null;
+    }
+
+    private (Embed Embed, string Fingerprint) BuildChangelogEmbedWithFingerprint(JsonElement entry, string version, bool isPrerelease)
+    {
+        var header = isPrerelease ? "Sphene Testbuild" : "Sphene Release";
+        var eb = new EmbedBuilder()
+            .WithColor(isPrerelease ? Color.Orange : Color.Green)
+            .WithTimestamp(DateTimeOffset.UtcNow);
+
+        var title = entry.TryGetProperty("title", out var tProp) && tProp.ValueKind == JsonValueKind.String ? tProp.GetString() : null;
+        var description = entry.TryGetProperty("description", out var dProp) && dProp.ValueKind == JsonValueKind.String ? dProp.GetString() : null;
+
+        var descBuilder = new System.Text.StringBuilder();
+        descBuilder.AppendLine($"# {header} {version}");
+
+        var cleanedTitle = NormalizeChangelogEntryTitleLine(title);
+        var cleanedTitleTrimmed = cleanedTitle?.Trim();
+        if (!string.IsNullOrWhiteSpace(cleanedTitleTrimmed) && IsRedundantChangelogTitleLine(cleanedTitleTrimmed, header, version))
+        {
+            cleanedTitleTrimmed = null;
+        }
+        if (!string.IsNullOrWhiteSpace(cleanedTitleTrimmed))
+        {
+            descBuilder.AppendLine();
+            descBuilder.AppendLine(cleanedTitleTrimmed);
+        }
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            if (descBuilder.Length > 0) descBuilder.AppendLine();
+            descBuilder.AppendLine(description!.Trim());
+        }
+
+        var changesText = FormatChangelogChanges(entry, maxChars: 2500);
+        if (!string.IsNullOrWhiteSpace(changesText))
+        {
+            if (descBuilder.Length > 0) descBuilder.AppendLine();
+            descBuilder.AppendLine(changesText);
+        }
+
+        var finalDesc = descBuilder.ToString().Trim();
+        if (finalDesc.Length > 4096)
+        {
+            finalDesc = finalDesc[..4093] + "...";
+        }
+
+        eb.WithDescription(finalDesc);
+        var fingerprint = ComputeChangelogFingerprint(header, version, finalDesc);
+        var footerPrefix = BuildChangelogFooterPrefix(version, isPrerelease);
+        eb.WithFooter($"{footerPrefix} rev {fingerprint}");
+        return (eb.Build(), fingerprint);
+    }
+
+    private static string BuildChangelogFooterPrefix(string version, bool isPrerelease)
+    {
+        return $"changelog {(isPrerelease ? "testbuild" : "release")} {version}";
+    }
+
+    private static bool FooterMatches(string? footerText, string expectedFooterPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(footerText))
+        {
+            return false;
+        }
+
+        return footerText.TrimStart().StartsWith(expectedFooterPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRedundantChangelogTitleLine(string titleLine, string header, string version)
+    {
+        var expected = $"{header} {version}";
+        if (titleLine.Equals(expected, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (titleLine.StartsWith(expected, StringComparison.OrdinalIgnoreCase))
+        {
+            var remainder = titleLine[expected.Length..].Trim();
+            return string.IsNullOrEmpty(remainder) || remainder is ":" or "-" or "–" or "—";
+        }
+
+        return false;
+    }
+
+    private static string? TryExtractChangelogFingerprint(string? footerText)
+    {
+        if (string.IsNullOrWhiteSpace(footerText))
+        {
+            return null;
+        }
+
+        var trimmed = footerText.Trim();
+        var revIndex = trimmed.IndexOf("rev ", StringComparison.OrdinalIgnoreCase);
+        if (revIndex >= 0)
+        {
+            var value = trimmed[(revIndex + 4)..].Trim();
+            var end = value.IndexOf(' ');
+            if (end > 0)
+            {
+                value = value[..end];
+            }
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        return null;
+    }
+
+    private static string ComputeChangelogFingerprint(string header, string version, string finalDescription)
+    {
+        var input = $"{header}|{version}|{finalDescription}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(hash)[..8].ToLowerInvariant();
+    }
+
+    private static string? NormalizeChangelogEntryTitleLine(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return null;
+        }
+
+        var text = title.Trim();
+        if (text[0] != '[')
+        {
+            return text;
+        }
+
+        var end = text.IndexOf(']');
+        if (end <= 0 || end > 16)
+        {
+            return text;
+        }
+
+        var tag = text[1..end].Trim();
+        if (!LooksLikeShortDateTag(tag))
+        {
+            return text;
+        }
+
+        var remainder = text[(end + 1)..].Trim();
+        return string.IsNullOrWhiteSpace(remainder) ? null : remainder;
+    }
+
+    private static bool LooksLikeShortDateTag(string tag)
+    {
+        if (tag.Length != 8)
+        {
+            return false;
+        }
+
+        return char.IsDigit(tag[0]) &&
+               char.IsDigit(tag[1]) &&
+               tag[2] == '-' &&
+               char.IsDigit(tag[3]) &&
+               char.IsDigit(tag[4]) &&
+               tag[5] == '-' &&
+               char.IsDigit(tag[6]) &&
+               char.IsDigit(tag[7]);
+    }
+
+    private string FormatChangelogChanges(JsonElement entry, int maxChars)
+    {
+        if (!entry.TryGetProperty("changes", out var changesProp) || changesProp.ValueKind != JsonValueKind.Array)
+        {
+            return string.Empty;
+        }
+
+        var builder = new System.Text.StringBuilder();
+        foreach (var change in changesProp.EnumerateArray())
+        {
+            if (builder.Length >= maxChars)
+            {
+                break;
+            }
+
+            if (change.ValueKind == JsonValueKind.String)
+            {
+                var line = change.GetString();
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    AppendLineBounded(builder, $"• {line.Trim()}", maxChars);
+                }
+            }
+            else if (change.ValueKind == JsonValueKind.Object)
+            {
+                string text = string.Empty;
+                if (change.TryGetProperty("description", out var cdProp) && cdProp.ValueKind == JsonValueKind.String)
+                {
+                    text = cdProp.GetString() ?? string.Empty;
+                }
+
+                var hasSub = change.TryGetProperty("sub", out var subProp) && subProp.ValueKind == JsonValueKind.Array;
+                var headerText = text.Trim();
+                var headerPrinted = false;
+                if (!string.IsNullOrWhiteSpace(headerText) && hasSub)
+                {
+                    if (builder.Length > 0)
+                    {
+                        AppendNewLineBounded(builder, maxChars);
+                    }
+                    AppendLineBounded(builder, $"**{headerText}**", maxChars);
+                    headerPrinted = true;
+                }
+                else if (!string.IsNullOrWhiteSpace(headerText))
+                {
+                    AppendLineBounded(builder, $"• {headerText}", maxChars);
+                }
+
+                if (hasSub)
+                {
+                    foreach (var sub in subProp.EnumerateArray())
+                    {
+                        if (builder.Length >= maxChars)
+                        {
+                            break;
+                        }
+
+                        string stext = string.Empty;
+                        if (sub.ValueKind == JsonValueKind.String)
+                        {
+                            stext = sub.GetString() ?? string.Empty;
+                        }
+                        else if (sub.ValueKind == JsonValueKind.Object &&
+                                 sub.TryGetProperty("description", out var sdProp) &&
+                                 sdProp.ValueKind == JsonValueKind.String)
+                        {
+                            stext = sdProp.GetString() ?? string.Empty;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(stext))
+                        {
+                            var prefix = headerPrinted ? "• " : "  • ";
+                            AppendLineBounded(builder, $"{prefix}{stext.Trim()}", maxChars);
+                        }
+                    }
+                }
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private static void AppendLineBounded(System.Text.StringBuilder builder, string line, int maxChars)
+    {
+        if (builder.Length >= maxChars || string.IsNullOrWhiteSpace(line))
+        {
+            return;
+        }
+
+        var remaining = maxChars - builder.Length;
+        if (remaining <= 0)
+        {
+            return;
+        }
+
+        if (line.Length + Environment.NewLine.Length > remaining)
+        {
+            var slice = Math.Max(0, remaining - Environment.NewLine.Length - 3);
+            if (slice <= 0)
+            {
+                return;
+            }
+
+            builder.Append(line[..slice]);
+            builder.Append("...");
+            builder.AppendLine();
+            return;
+        }
+
+        builder.AppendLine(line);
+    }
+
+    private static void AppendNewLineBounded(System.Text.StringBuilder builder, int maxChars)
+    {
+        if (builder.Length + Environment.NewLine.Length > maxChars)
+        {
+            return;
+        }
+
+        builder.AppendLine();
+    }
+
+    private async Task<(ChangelogBuild Release, ChangelogBuild TestBuild)?> TryFetchPluginMasterAsync(CancellationToken token)
+    {
+        try
+        {
+            using var resp = await _httpClient.GetAsync(PluginMasterUrl, token).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+            var json = await resp.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+            var entries = JsonSerializer.Deserialize<List<PluginMasterEntry>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (entries == null || entries.Count == 0)
+            {
+                return null;
+            }
+
+            var sphene = entries.FirstOrDefault(e => string.Equals(e.InternalName, "Sphene", StringComparison.OrdinalIgnoreCase));
+            if (sphene == null)
+            {
+                return null;
+            }
+
+            var releaseUrl = !string.IsNullOrWhiteSpace(sphene.DownloadLinkUpdate)
+                ? sphene.DownloadLinkUpdate
+                : sphene.DownloadLinkInstall;
+
+            var release = new ChangelogBuild(sphene.AssemblyVersion, releaseUrl);
+            var testBuild = new ChangelogBuild(sphene.TestingAssemblyVersion, sphene.DownloadLinkTesting);
+            return (release, testBuild);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to fetch plugin master");
+            return null;
+        }
+    }
+
+    private async Task<JsonDocument?> TryFetchChangelogJsonAsync(CancellationToken token)
+    {
+        try
+        {
+            using var resp = await _httpClient.GetAsync(ChangelogUrl, token).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+            var stream = await resp.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            return await JsonDocument.ParseAsync(stream, cancellationToken: token).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to fetch changelog JSON");
+            return null;
+        }
+    }
+
+    private static bool TryFindChangelogEntry(JsonDocument changelogJson, string expectedVersion, bool expectedIsPrerelease, out JsonElement entry)
+    {
+        entry = default;
+
+        var root = changelogJson.RootElement;
+        if (!root.TryGetProperty("changelogs", out var changelogs) || changelogs.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var item in changelogs.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var version = item.TryGetProperty("version", out var vProp) && vProp.ValueKind == JsonValueKind.String
+                ? vProp.GetString() ?? string.Empty
+                : string.Empty;
+
+            if (!string.Equals(version, expectedVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var isPrerelease = item.TryGetProperty("isPrerelease", out var prProp) && prProp.ValueKind == JsonValueKind.True;
+            if (isPrerelease != expectedIsPrerelease)
+            {
+                continue;
+            }
+
+            entry = item;
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task<bool> IsUrlAvailableAsync(string url, CancellationToken token)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var head = new HttpRequestMessage(HttpMethod.Head, uri);
+            using var headResp = await _httpClient.SendAsync(head, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+            if (headResp.IsSuccessStatusCode)
+            {
+                return true;
+            }
+
+            if (headResp.StatusCode is HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented)
+            {
+                using var get = new HttpRequestMessage(HttpMethod.Get, uri);
+                using var getResp = await _httpClient.SendAsync(get, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+                return getResp.IsSuccessStatusCode;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to probe URL availability: {url}", url);
+            return false;
+        }
+    }
+
+    private readonly record struct ChangelogBuild(string? Version, string? DownloadUrl);
+
+    private sealed class PluginMasterEntry
+    {
+        public string InternalName { get; set; } = string.Empty;
+        public string AssemblyVersion { get; set; } = string.Empty;
+        public string DownloadLinkInstall { get; set; } = string.Empty;
+        public string DownloadLinkUpdate { get; set; } = string.Empty;
+        public string DownloadLinkTesting { get; set; } = string.Empty;
+        public string TestingAssemblyVersion { get; set; } = string.Empty;
     }
 }
