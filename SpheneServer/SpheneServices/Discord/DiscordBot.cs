@@ -30,8 +30,6 @@ internal class DiscordBot : IHostedService
     private readonly CancellationTokenSource? _processReportQueueCts;
     private CancellationTokenSource? _clientConnectedCts;
     private readonly HttpClient _httpClient = new();
-    private const string ChangelogUrl = "https://sphene.online/sphene/changelog.json";
-    private const string PluginMasterUrl = "https://raw.githubusercontent.com/SpheneDev/repo/refs/heads/main/plogonmaster.json";
     private static readonly TimeSpan ChangelogPollInterval = TimeSpan.FromSeconds(30);
     private static readonly RedisKey LastPostedReleaseKey = new RedisKey("discord:changelog:lastPosted:release");
     private static readonly RedisKey LastPostedTestBuildKey = new RedisKey("discord:changelog:lastPosted:testbuild");
@@ -956,7 +954,16 @@ internal class DiscordBot : IHostedService
     {
         try
         {
-            using var resp = await _httpClient.GetAsync(PluginMasterUrl, token).ConfigureAwait(false);
+            var pluginMasterUrl = _configurationService.GetValueOrDefault(
+                nameof(ServicesConfiguration.DiscordPluginMasterUrl),
+                ServicesConfiguration.DefaultDiscordPluginMasterUrl);
+
+            if (string.IsNullOrWhiteSpace(pluginMasterUrl))
+            {
+                pluginMasterUrl = ServicesConfiguration.DefaultDiscordPluginMasterUrl;
+            }
+
+            using var resp = await _httpClient.GetAsync(pluginMasterUrl, token).ConfigureAwait(false);
             resp.EnsureSuccessStatusCode();
             var json = await resp.Content.ReadAsStringAsync(token).ConfigureAwait(false);
             var entries = JsonSerializer.Deserialize<List<PluginMasterEntry>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -990,7 +997,16 @@ internal class DiscordBot : IHostedService
     {
         try
         {
-            using var resp = await _httpClient.GetAsync(ChangelogUrl, token).ConfigureAwait(false);
+            var changelogUrl = _configurationService.GetValueOrDefault(
+                nameof(ServicesConfiguration.DiscordChangelogUrl),
+                ServicesConfiguration.DefaultDiscordChangelogUrl);
+
+            if (string.IsNullOrWhiteSpace(changelogUrl))
+            {
+                changelogUrl = ServicesConfiguration.DefaultDiscordChangelogUrl;
+            }
+
+            using var resp = await _httpClient.GetAsync(changelogUrl, token).ConfigureAwait(false);
             resp.EnsureSuccessStatusCode();
             var stream = await resp.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             return await JsonDocument.ParseAsync(stream, cancellationToken: token).ConfigureAwait(false);

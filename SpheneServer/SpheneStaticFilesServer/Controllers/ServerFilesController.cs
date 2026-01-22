@@ -234,24 +234,42 @@ public class ServerFilesController : ControllerBase
         {
             foreach (var modInfo in filesSendDto.ModInfo)
             {
-                var existingMod = await dbContext.ModFiles.FindAsync(modInfo.Hash);
+                var modHash = NormalizeHashForLookup(modInfo.Hash ?? string.Empty);
+                if (string.IsNullOrEmpty(modHash))
+                {
+                    continue;
+                }
+
+                var folderHash = NormalizeHashForLookup(modInfo.FolderHash ?? string.Empty);
+                if (string.IsNullOrEmpty(folderHash))
+                {
+                    folderHash = string.Empty;
+                }
+
+                var existingMod = await dbContext.ModFiles.FindAsync(modHash);
                 if (existingMod == null)
                 {
-                    _logger.LogInformation("Adding new ModFile to DB: {hash}", modInfo.Hash);
+                    _logger.LogInformation("Adding new ModFile to DB: {hash}", modHash);
                     await dbContext.ModFiles.AddAsync(new ModFile
                     {
-                        Hash = modInfo.Hash,
+                        Hash = modHash,
                         Name = modInfo.Name,
                         Author = modInfo.Author,
                         Version = modInfo.Version,
                         Description = modInfo.Description,
                         Website = modInfo.Website,
+                        FolderHash = string.IsNullOrEmpty(folderHash) ? null : folderHash,
                         UploadedDate = DateTime.UtcNow
                     });
                 }
                 else
                 {
-                     _logger.LogInformation("ModFile already exists for {hash}", modInfo.Hash);
+                    if (!string.IsNullOrEmpty(folderHash) && !string.Equals(existingMod.FolderHash, folderHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existingMod.FolderHash = folderHash;
+                    }
+
+                    _logger.LogInformation("ModFile already exists for {hash}", modHash);
                 }
             }
             try 
@@ -265,11 +283,107 @@ public class ServerFilesController : ControllerBase
             }
         }
 
+        var dedupedHashByRequestedHash = new Dictionary<string, string>(StringComparer.Ordinal);
+        try
+        {
+            if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Count > 0)
+            {
+                var folderHashByRequestedHash = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var modInfo in filesSendDto.ModInfo)
+                {
+                    var requestedHash = NormalizeHashForLookup(modInfo.Hash ?? string.Empty);
+                    if (string.IsNullOrEmpty(requestedHash))
+                    {
+                        continue;
+                    }
+
+                    var folderHash = NormalizeHashForLookup(modInfo.FolderHash ?? string.Empty);
+                    if (string.IsNullOrEmpty(folderHash))
+                    {
+                        continue;
+                    }
+
+                    folderHashByRequestedHash[requestedHash] = folderHash;
+                }
+
+                var folderHashesToCheck = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var requestedHash in userSentHashes)
+                {
+                    if (forbiddenFiles.ContainsKey(requestedHash))
+                    {
+                        continue;
+                    }
+
+                    if (unavailableHashes.Contains(requestedHash))
+                    {
+                        continue;
+                    }
+
+                    if (existingFiles.TryGetValue(requestedHash, out var file) && file.Uploaded)
+                    {
+                        continue;
+                    }
+
+                    if (folderHashByRequestedHash.TryGetValue(requestedHash, out var folderHash))
+                    {
+                        folderHashesToCheck.Add(folderHash);
+                    }
+                }
+
+                if (folderHashesToCheck.Count > 0)
+                {
+                    var candidates = await (from mod in dbContext.ModFiles.AsNoTracking()
+                                            join file in dbContext.Files.AsNoTracking() on mod.Hash equals file.Hash
+                                            where mod.FolderHash != null
+                                                && folderHashesToCheck.Contains(mod.FolderHash)
+                                                && file.Uploaded
+                                                && file.Size > 0
+                                            select new { FolderHash = mod.FolderHash!, Hash = file.Hash, Size = file.Size })
+                        .ToListAsync()
+                        .ConfigureAwait(false);
+
+                    var usableHashByFolderHash = new Dictionary<string, string>(StringComparer.Ordinal);
+                    foreach (var candidate in candidates)
+                    {
+                        if (usableHashByFolderHash.ContainsKey(candidate.FolderHash))
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            var fi = FilePathUtil.GetFileInfoForHash(_basePath, candidate.Hash);
+                            if (fi != null && fi.Exists && fi.Length == candidate.Size)
+                            {
+                                usableHashByFolderHash[candidate.FolderHash] = candidate.Hash;
+                            }
+                        }
+                        catch
+                        {
+                        }
+                    }
+
+                    foreach (var kv in folderHashByRequestedHash)
+                    {
+                        if (usableHashByFolderHash.TryGetValue(kv.Value, out var existingHash))
+                        {
+                            dedupedHashByRequestedHash[kv.Key] = existingHash;
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "{user}|FilesSend: Failed to compute folder-hash dedupe map", SpheneUser);
+        }
+
         foreach (var hash in userSentHashes)
         {
             // Skip empty file hashes, duplicate file hashes, forbidden file hashes and existing file hashes
             if (string.IsNullOrEmpty(hash)) { continue; }
             if (notCoveredFiles.ContainsKey(hash)) { continue; }
+            if (dedupedHashByRequestedHash.ContainsKey(hash)) { continue; }
             if (forbiddenFiles.ContainsKey(hash))
             {
                 notCoveredFiles[hash] = new UploadFileDto()
@@ -298,17 +412,43 @@ public class ServerFilesController : ControllerBase
             };
         }
 
-        var hashesForNotification = userSentHashes
-            .Where(h => !string.IsNullOrEmpty(h)
-                        && !forbiddenFiles.ContainsKey(h)
-                        && !unavailableHashes.Contains(h)
-                        && existingFiles.TryGetValue(h, out var file)
-                        && file.Uploaded)
-            .ToList();
+        var notificationPairs = new List<(string RequestedHash, string EffectiveHash)>(userSentHashes.Count);
+        foreach (var requestedHash in userSentHashes)
+        {
+            if (string.IsNullOrEmpty(requestedHash))
+            {
+                continue;
+            }
+
+            if (forbiddenFiles.ContainsKey(requestedHash))
+            {
+                continue;
+            }
+
+            if (unavailableHashes.Contains(requestedHash))
+            {
+                continue;
+            }
+
+            if (existingFiles.TryGetValue(requestedHash, out var file) && file.Uploaded)
+            {
+                notificationPairs.Add((requestedHash, requestedHash));
+                continue;
+            }
+
+            if (dedupedHashByRequestedHash.TryGetValue(requestedHash, out var existingHash))
+            {
+                var effectiveHash = NormalizeHashForLookup(existingHash);
+                if (!string.IsNullOrEmpty(effectiveHash))
+                {
+                    notificationPairs.Add((requestedHash, effectiveHash));
+                }
+            }
+        }
 
         var recipientUids = filesSendDto.UIDs?.Distinct(StringComparer.Ordinal).ToList() ?? new List<string>();
 
-        if (hashesForNotification.Any() && recipientUids.Any())
+        if (notificationPairs.Any() && recipientUids.Any())
         {
             try
             {
@@ -351,8 +491,8 @@ public class ServerFilesController : ControllerBase
                 if (isModTransferRequest)
                 {
                     var pendingTransfers = new List<PendingFileTransfer>();
-                    var normalizedHashes = hashesForNotification
-                        .Select(NormalizeHashForLookup)
+                    var normalizedHashes = notificationPairs
+                        .Select(p => NormalizeHashForLookup(p.EffectiveHash))
                         .Where(h => !string.IsNullOrEmpty(h))
                         .Distinct(StringComparer.Ordinal)
                         .ToList();
@@ -381,9 +521,9 @@ public class ServerFilesController : ControllerBase
 
                     foreach (var uid in recipientUids)
                     {
-                        foreach (var singleHash in hashesForNotification)
+                        foreach (var pair in notificationPairs)
                         {
-                            var normalizedHash = NormalizeHashForLookup(singleHash);
+                            var normalizedHash = NormalizeHashForLookup(pair.EffectiveHash);
                             if (string.IsNullOrEmpty(normalizedHash))
                             {
                                 continue;
@@ -397,15 +537,19 @@ public class ServerFilesController : ControllerBase
                             string? modFolderName = null;
                             if (modFolderNamesLookup != null && modFolderNamesLookup.Count > 0)
                             {
-                                modFolderNamesLookup.TryGetValue(singleHash, out modFolderName);
+                                modFolderNamesLookup.TryGetValue(pair.RequestedHash, out modFolderName);
                             }
 
                             List<ModInfoDto>? singleModInfo = null;
                             if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Count > 0)
                             {
-                                var match = filesSendDto.ModInfo.FirstOrDefault(m => string.Equals(m.Hash, singleHash, StringComparison.OrdinalIgnoreCase));
+                                var match = filesSendDto.ModInfo.FirstOrDefault(m => string.Equals(m.Hash, pair.RequestedHash, StringComparison.OrdinalIgnoreCase));
                                 if (match != null)
                                 {
+                                    if (!string.Equals(match.Hash, normalizedHash, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        match = match with { Hash = normalizedHash };
+                                    }
                                     singleModInfo = new List<ModInfoDto>(1) { match };
                                 }
                             }
@@ -449,7 +593,7 @@ public class ServerFilesController : ControllerBase
                     {
                         try
                         {
-                            _logger.LogInformation("{user}|FilesSend: notifying {uidCount} recipients for {hashCount} hashes", SpheneUser, recipientUids.Count, hashesForNotification.Count);
+                                    _logger.LogInformation("{user}|FilesSend: notifying {uidCount} recipients for {hashCount} hashes", SpheneUser, recipientUids.Count, notificationPairs.Count);
                             await dbContext.PendingFileTransfers.AddRangeAsync(pendingTransfers, HttpContext.RequestAborted).ConfigureAwait(false);
                             await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
                         }
@@ -696,6 +840,12 @@ public class ServerFilesController : ControllerBase
                 name = folder;
             }
 
+            var folderHash = NormalizeHashForLookup(mod.FolderHash ?? string.Empty);
+            if (string.IsNullOrEmpty(folderHash))
+            {
+                folderHash = null;
+            }
+
             normalizedMods.Add(new PenumbraModBackupEntryDto(
                 hash,
                 folder,
@@ -703,7 +853,8 @@ public class ServerFilesController : ControllerBase
                 string.IsNullOrWhiteSpace(mod.Author) ? null : mod.Author,
                 string.IsNullOrWhiteSpace(mod.Version) ? null : mod.Version,
                 string.IsNullOrWhiteSpace(mod.Description) ? null : mod.Description,
-                string.IsNullOrWhiteSpace(mod.Website) ? null : mod.Website));
+                string.IsNullOrWhiteSpace(mod.Website) ? null : mod.Website,
+                folderHash));
         }
 
         if (normalizedMods.Count == 0)

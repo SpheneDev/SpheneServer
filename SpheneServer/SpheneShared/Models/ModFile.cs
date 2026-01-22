@@ -11,5 +11,7 @@ public class ModFile
     public string? Version { get; set; }
     public string? Description { get; set; }
     public string? Website { get; set; }
+    [MaxLength(40)]
+    public string? FolderHash { get; set; }
     public DateTime UploadedDate { get; set; } = DateTime.UtcNow;
 }

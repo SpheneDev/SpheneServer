@@ -33,24 +33,28 @@ public class SpheneCensus : IHostedService
     private bool Initialized => _gauge != null;
 
     private static readonly string[] XivapiDataminingBranches = ["main", "master"];
+    private static readonly string[] XivapiDataminingCsvDirectories = ["csv/en", "csv"];
 
-    private static string BuildXivapiDataminingCsvUrl(string branch, string csvFileName)
+    private static string BuildXivapiDataminingCsvUrl(string branch, string csvDirectory, string csvFileName)
     {
-        return $"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/{branch}/csv/{csvFileName}";
+        return $"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/{branch}/{csvDirectory}/{csvFileName}";
     }
 
     private async Task<string?> TryDownloadXivapiCsvAsync(HttpClient client, string csvFileName, CancellationToken cancellationToken)
     {
         foreach (var branch in XivapiDataminingBranches)
         {
-            try
+            foreach (var csvDirectory in XivapiDataminingCsvDirectories)
             {
-                var url = BuildXivapiDataminingCsvUrl(branch, csvFileName);
-                return await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogWarning(ex, "Failed to download XIVAPI data from branch {branch} ({file})", branch, csvFileName);
+                try
+                {
+                    var url = BuildXivapiDataminingCsvUrl(branch, csvDirectory, csvFileName);
+                    return await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogWarning(ex, "Failed to download XIVAPI data from {branch}/{dir} ({file})", branch, csvDirectory, csvFileName);
+                }
             }
         }
 

@@ -481,7 +481,15 @@ public partial class SpheneHub
                         && !ownperm.IsPaused && (otherperm == null ? false : !otherperm.IsPaused)
                      select user.OtherUserUID;
 
-        return await result.Distinct().AsNoTracking().ToListAsync().ConfigureAwait(false);
+        try
+        {
+            return await result.Distinct().AsNoTracking().ToListAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("Failed to query synced online pairs", ex.GetType().Name, ex.Message));
+            return [];
+        }
     }
 
     public record UserInfo(string Alias, bool IndividuallyPaired, bool IsSynced, List<string> GIDs, UserPermissionSet? OwnPermissions, UserPermissionSet? OtherPermissions);
