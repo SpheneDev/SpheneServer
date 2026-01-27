@@ -575,6 +575,7 @@ internal class DiscordBot : IHostedService
         var lastPostedHash = await db.StringGetAsync(lastPostedHashRedisKey).ConfigureAwait(false);
         var lastPostedMessageIdRaw = await db.StringGetAsync(lastPostedMessageIdRedisKey).ConfigureAwait(false);
 
+        // 1. Fast Path: Check if we have a valid known message ID in Redis
         if (!lastPosted.IsNullOrEmpty && string.Equals(lastPosted.ToString(), expectedVersion, StringComparison.OrdinalIgnoreCase))
         {
             if (!lastPostedMessageIdRaw.IsNullOrEmpty && ulong.TryParse(lastPostedMessageIdRaw.ToString(), out var msgId))
@@ -585,6 +586,7 @@ internal class DiscordBot : IHostedService
                     var existingEmbed = message.Embeds.FirstOrDefault(e => FooterMatches(e.Footer?.Text, expectedFooterPrefix))
                                        ?? message.Embeds.FirstOrDefault(e => string.Equals(e.Title, expectedEmbedTitle, StringComparison.OrdinalIgnoreCase));
                     var existingFingerprint = TryExtractChangelogFingerprint(existingEmbed?.Footer?.Text);
+
                     if (string.Equals(existingFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
                     {
                         await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
@@ -596,26 +598,25 @@ internal class DiscordBot : IHostedService
                     return;
                 }
             }
+        }
 
-            var found = await TryFindChangelogMessageAsync(channel, expectedFooterPrefix, expectedEmbedTitle, token).ConfigureAwait(false);
-            if (found != null)
+        // 2. Fallback Path: Scan channel history
+        // We do this if:
+        // - Redis was empty (lost state)
+        // - OR Redis had state but the message was deleted or not found
+        // - OR we just want to be sure before posting a duplicate
+        var found = await TryFindChangelogMessageAsync(channel, expectedFooterPrefix, expectedEmbedTitle, token).ConfigureAwait(false);
+        if (found != null)
+        {
+            var (existingMessage, existingFingerprint) = found.Value;
+            if (!string.Equals(existingFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
             {
-                var (existingMessage, existingFingerprint) = found.Value;
-                if (!string.Equals(existingFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
-                {
-                    await existingMessage.ModifyAsync(p => p.Embed = embed).ConfigureAwait(false);
-                }
-
-                await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
-                await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
-                await db.StringSetAsync(lastPostedMessageIdRedisKey, existingMessage.Id.ToString()).ConfigureAwait(false);
-                return;
+                await existingMessage.ModifyAsync(p => p.Embed = embed).ConfigureAwait(false);
             }
 
-            var reposted = await channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
             await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
             await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
-            await db.StringSetAsync(lastPostedMessageIdRedisKey, reposted.Id.ToString()).ConfigureAwait(false);
+            await db.StringSetAsync(lastPostedMessageIdRedisKey, existingMessage.Id.ToString()).ConfigureAwait(false);
             return;
         }
 
