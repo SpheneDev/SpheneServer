@@ -700,10 +700,10 @@ public partial class SpheneHub
         // Send updates to all online paired users about their updated AckOther value
         foreach (var pair in onlinePairs)
         {
-            if (allPairInfo.TryGetValue(pair.Key, out var pairData) && pairData?.OtherPermissions != null)
+            if (allPairInfo.TryGetValue(pair.Key, out var pairData) && pairData?.OwnPermissions != null)
             {
-                notificationTasks.Add(Clients.User(pair.Key).Client_UserAckYouUpdate(
-                    new UserPermissionsDto(user.ToUserData(), pairData.OtherPermissions.ToUserPermissions())));
+                notificationTasks.Add(Clients.User(pair.Key).Client_UserUpdateOtherPairPermissions(
+                    new UserPermissionsDto(user.ToUserData(), pairData.OwnPermissions.ToUserPermissions())));
             }
         }
 
