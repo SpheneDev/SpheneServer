@@ -152,7 +152,14 @@ public class ClientPairPermissionsCleanupService(ILogger<ClientPairPermissionsCl
     {
         if (!_configurationService.GetValueOrDefault(nameof(ServerConfiguration.RunPermissionCleanupOnStartup), defaultValue: true))
         {
-            await WaitUntilNextCleanup(ct).ConfigureAwait(false);
+            try
+            {
+                await WaitUntilNextCleanup(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
 
         while (!ct.IsCancellationRequested)
@@ -162,17 +169,43 @@ public class ClientPairPermissionsCleanupService(ILogger<ClientPairPermissionsCl
                 _logger.LogInformation("Starting Permissions Cleanup");
                 await AllUsersPermissionsCleanup(ct).ConfigureAwait(false);
             }
+            catch (OperationCanceledException)
+            {
+                // Graceful shutdown
+                return;
+            }
             catch (DbUpdateConcurrencyException ex)
             {
-                _logger.LogWarning(ex, "Concurrency Exception during User Permissions Cleanup");
+                if (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        _logger.LogWarning(ex, "Concurrency Exception during User Permissions Cleanup");
+                    }
+                    catch (ObjectDisposedException) { /* Logger disposed */ }
+                }
                 continue;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unhandled Exception during User Permissions Cleanup");
+                if (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        _logger.LogError(ex, "Unhandled Exception during User Permissions Cleanup");
+                    }
+                    catch (ObjectDisposedException) { /* Logger disposed */ }
+                }
             }
 
-            await WaitUntilNextCleanup(ct).ConfigureAwait(false);
+            try
+            {
+                await WaitUntilNextCleanup(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
     }
 

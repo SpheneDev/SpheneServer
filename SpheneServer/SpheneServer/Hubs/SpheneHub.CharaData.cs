@@ -289,6 +289,38 @@ public partial class SpheneHub
     }
 
     [Authorize(Policy = "Identified")]
+    public async Task BypassEmoteUpdate(BypassEmoteUpdateDto updateDto)
+    {
+        // Fast path: Send to recipients immediately before saving to DB
+        // We do this BEFORE DB lookup because the DB entry might not exist yet (race condition with Slow Path)
+        if (updateDto.Recipients != null && updateDto.Recipients.Any())
+        {
+            var recipientUids = updateDto.Recipients.Select(r => r.UID).ToList();
+            var allPairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+            var validRecipients = recipientUids.Intersect(allPairedUsers, StringComparer.Ordinal).ToList();
+            
+            if (validRecipients.Any())
+            {
+                var forwardDto = updateDto with { Sender = new UserData(UserUID), Recipients = null };
+                // We don't wait for this to finish before starting the DB save, but we want to ensure it's fired
+                _ = Clients.Users(validRecipients).Client_UserReceiveBypassEmote(forwardDto);
+            }
+        }
+
+        var charaData = await DbContext.CharaData
+            .SingleOrDefaultAsync(u => u.Id == updateDto.Id && u.UploaderUID == UserUID).ConfigureAwait(false);
+
+        if (charaData == null)
+        {
+            return;
+        }
+
+        charaData.BypassEmoteData = updateDto.BypassEmoteData;
+        charaData.UpdatedDate = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+    }
+
+    [Authorize(Policy = "Identified")]
     public async Task<CharaDataFullDto?> CharaDataUpdate(CharaDataUpdateDto updateDto)
     {
         var charaData = await DbContext.CharaData
@@ -359,6 +391,12 @@ public partial class SpheneHub
         if (updateDto.PetNamesData != null)
         {
             charaData.PetNamesData = updateDto.PetNamesData;
+            anyChanges = true;
+        }
+
+        if (updateDto.BypassEmoteData != null)
+        {
+            charaData.BypassEmoteData = updateDto.BypassEmoteData;
             anyChanges = true;
         }
 
@@ -581,6 +619,7 @@ public partial class SpheneHub
             HonorificData = charaData.HonorificData,
             MoodlesData = charaData.MoodlesData,
             PetNamesData = charaData.PetNamesData,
+            BypassEmoteData = charaData.BypassEmoteData,
         };
     }
 
@@ -606,6 +645,7 @@ public partial class SpheneHub
             HonorificData = charaData.HonorificData,
             MoodlesData = charaData.MoodlesData,
             PetNamesData = charaData.PetNamesData,
+            BypassEmoteData = charaData.BypassEmoteData,
             DownloadCount = charaData.DownloadCount,
             PoseData = [.. charaData.Poses.OrderBy(p => p.Id).Select(k =>
             {

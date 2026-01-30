@@ -464,7 +464,7 @@ public partial class SpheneHub
 
         var allPairs = clientPairs.Concat(groupPairs);
 
-        var result = from user in allPairs
+        var query = from user in allPairs
                      join o in DbContext.Permissions.AsNoTracking().Where(u => u.UserUID == uid)
                         on new { UserUID = user.UserUID, OtherUserUID = user.OtherUserUID }
                         equals new { UserUID = o.UserUID, OtherUserUID = o.OtherUserUID }
@@ -476,14 +476,17 @@ public partial class SpheneHub
                         into otherperms
                      from otherperm in otherperms.DefaultIfEmpty()
                      where user.UserUID == uid
-                        && ownperm.UserUID == user.UserUID && ownperm.OtherUserUID == user.OtherUserUID
-                        && otherperm.OtherUserUID == user.UserUID && otherperm.UserUID == user.OtherUserUID
-                        && !ownperm.IsPaused && (otherperm == null ? false : !otherperm.IsPaused)
-                     select user.OtherUserUID;
+                     select new { User = user, OwnPerm = ownperm, OtherPerm = otherperm };
 
         try
         {
-            return await result.Distinct().AsNoTracking().ToListAsync().ConfigureAwait(false);
+            var pairList = await query.AsNoTracking().ToListAsync().ConfigureAwait(false);
+
+            // Allow null permissions (meaning no override/default) to pass as Unpaused
+            return pairList.Where(x => (x.OwnPerm == null || !x.OwnPerm.IsPaused) && (x.OtherPerm == null || !x.OtherPerm.IsPaused))
+                            .Select(x => x.User.OtherUserUID)
+                            .Distinct()
+                            .ToList();
         }
         catch (Exception ex)
         {
