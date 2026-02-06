@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Sphene.API.Dto.Files;
+using Sphene.API.Dto.User;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -27,6 +28,7 @@ public class ServerFilesController : ControllerBase
     private const long MaxUploadRequestSize = 1024L * 1024 * 1024;
     private static readonly SemaphoreSlim _fileLockDictLock = new(1);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fileUploadLocks = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, HashSet<string>>> _pendingUploadsBySender = new(StringComparer.Ordinal);
     private readonly string _basePath;
     private readonly CachedFileProvider _cachedFileProvider;
     private readonly IConfigurationService<StaticFilesServerConfiguration> _configuration;
@@ -477,17 +479,25 @@ public class ServerFilesController : ControllerBase
                 recipientUids = await GetBidirectionalIndividualRecipientsAsync(dbContext, SpheneUser, recipientUids).ConfigureAwait(false);
             }
 
+            var requiredUploadHashes = notCoveredFiles.Values
+                .Where(f => !f.IsForbidden)
+                .Select(f => NormalizeHashForLookup(f.Hash))
+                .Where(h => !string.IsNullOrEmpty(h))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
             if (recipientUids.Any())
             {
-                if (!isPenumbraModUpload)
+                var senderAlias = string.IsNullOrWhiteSpace(SpheneAlias) ? null : SpheneAlias;
+                var sender = new UserData(SpheneUser, senderAlias);
+
+                if (!isPenumbraModUpload && requiredUploadHashes.Count > 0)
                 {
+                    TrackPendingUploads(SpheneUser, recipientUids, requiredUploadHashes);
                     await _hubContext.Clients.Users(recipientUids)
-                        .SendAsync(nameof(ISpheneHub.Client_UserReceiveUploadStatus), new Sphene.API.Dto.User.UserDto(new(SpheneUser)))
+                        .SendAsync(nameof(ISpheneHub.Client_UserReceiveUploadStatus), new UserUploadStatusDto(sender, true))
                         .ConfigureAwait(false);
                 }
-
-                var senderAlias = string.IsNullOrWhiteSpace(SpheneAlias) ? null : SpheneAlias;
-                var sender = new Sphene.API.Data.UserData(SpheneUser, senderAlias);
                 if (isModTransferRequest)
                 {
                     var pendingTransfers = new List<PendingFileTransfer>();
@@ -1004,6 +1014,77 @@ public class ServerFilesController : ControllerBase
         return validRecipients;
     }
 
+    private void TrackPendingUploads(string senderUid, IReadOnlyCollection<string> recipientUids, IReadOnlyCollection<string> hashes)
+    {
+        if (recipientUids.Count == 0 || hashes.Count == 0)
+        {
+            return;
+        }
+
+        var perSender = _pendingUploadsBySender.GetOrAdd(senderUid, _ => new ConcurrentDictionary<string, HashSet<string>>(StringComparer.Ordinal));
+        foreach (var recipientUid in recipientUids)
+        {
+            if (string.IsNullOrWhiteSpace(recipientUid))
+            {
+                continue;
+            }
+
+            var hashSet = perSender.GetOrAdd(recipientUid, _ => new HashSet<string>(StringComparer.Ordinal));
+            lock (hashSet)
+            {
+                hashSet.UnionWith(hashes);
+            }
+        }
+    }
+
+    private async Task NotifyUploadCompletedAsync(string senderUid, string hash)
+    {
+        if (!_pendingUploadsBySender.TryGetValue(senderUid, out var perSender))
+        {
+            return;
+        }
+
+        var completedRecipients = new List<string>();
+        foreach (var pair in perSender)
+        {
+            var hashSet = pair.Value;
+            var isComplete = false;
+            lock (hashSet)
+            {
+                if (hashSet.Remove(hash) && hashSet.Count == 0)
+                {
+                    isComplete = true;
+                }
+            }
+
+            if (!isComplete)
+            {
+                continue;
+            }
+
+            if (perSender.TryRemove(pair.Key, out _))
+            {
+                completedRecipients.Add(pair.Key);
+            }
+        }
+
+        if (perSender.IsEmpty)
+        {
+            _pendingUploadsBySender.TryRemove(senderUid, out _);
+        }
+
+        if (completedRecipients.Count == 0)
+        {
+            return;
+        }
+
+        var senderAlias = string.IsNullOrWhiteSpace(SpheneAlias) ? null : SpheneAlias;
+        var sender = new UserData(senderUid, senderAlias);
+        await _hubContext.Clients.Users(completedRecipients)
+            .SendAsync(nameof(ISpheneHub.Client_UserReceiveUploadStatus), new UserUploadStatusDto(sender, false))
+            .ConfigureAwait(false);
+    }
+
     [HttpPost(SpheneFiles.ServerFiles_Upload + "/{hash}")]
     [RequestSizeLimit(MaxUploadRequestSize)]
     public async Task<IActionResult> UploadFile(string hash, CancellationToken requestAborted)
@@ -1033,6 +1114,7 @@ public class ServerFilesController : ControllerBase
             _logger.LogDebug("{user}|{file}: Finished uploading", SpheneUser, hash);
 
             await StoreData(hash, dbContext, memoryStream).ConfigureAwait(false);
+            await NotifyUploadCompletedAsync(SpheneUser, hash).ConfigureAwait(false);
 
             return Ok();
         }
@@ -1090,6 +1172,7 @@ public class ServerFilesController : ControllerBase
             _logger.LogDebug("{user}|{file}: Finished uploading, unmunged stream", SpheneUser, hash);
 
             await StoreData(hash, dbContext, unmungedMs);
+            await NotifyUploadCompletedAsync(SpheneUser, hash).ConfigureAwait(false);
 
             return Ok();
         }
