@@ -492,7 +492,9 @@ public partial class SpheneHub
                 {
                     FileCacheHash = file.HashOrFileSwap,
                     GamePath = file.GamePath,
-                    Parent = charaData
+                    Parent = charaData,
+                    ModName = file.ModName,
+                    OptionName = file.OptionName
                 });
 
                 charaData.OriginalFiles.Add(new CharaDataOriginalFile()
@@ -517,7 +519,9 @@ public partial class SpheneHub
                 {
                     FilePath = file.HashOrFileSwap,
                     GamePath = file.GamePath,
-                    Parent = charaData
+                    Parent = charaData,
+                    ModName = file.ModName,
+                    OptionName = file.OptionName
                 });
             }
 
@@ -611,9 +615,9 @@ public partial class SpheneHub
         {
             CustomizeData = charaData.CustomizeData,
             Description = charaData.Description,
-            FileGamePaths = charaData.Files.Select(k => new GamePathEntry(k.FileCacheHash, k.GamePath)).ToList(),
+            FileGamePaths = charaData.Files.Select(k => new GamePathEntry(k.FileCacheHash, k.GamePath) { ModName = k.ModName, OptionName = k.OptionName }).ToList(),
             GlamourerData = charaData.GlamourerData,
-            FileSwaps = charaData.FileSwaps.Select(k => new GamePathEntry(k.FilePath, k.GamePath)).ToList(),
+            FileSwaps = charaData.FileSwaps.Select(k => new GamePathEntry(k.FilePath, k.GamePath) { ModName = k.ModName, OptionName = k.OptionName }).ToList(),
             ManipulationData = charaData.ManipulationData,
             HeelsData = charaData.HeelsData,
             HonorificData = charaData.HonorificData,

@@ -73,6 +73,8 @@ public class CharaDataFile
     public virtual CharaData Parent { get; set; }
     public string ParentId { get; set; }
     public string ParentUploaderUID { get; set; }
+    public string? ModName { get; set; }
+    public string? OptionName { get; set; }
 }
 
 public class CharaDataFileSwap
@@ -82,6 +84,8 @@ public class CharaDataFileSwap
     public string ParentUploaderUID { get; set; }
     public string GamePath { get; set; }
     public string FilePath { get; set; }
+    public string? ModName { get; set; }
+    public string? OptionName { get; set; }
 }
 
 public class CharaDataPose
