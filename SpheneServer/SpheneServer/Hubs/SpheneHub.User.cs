@@ -115,7 +115,10 @@ public partial class SpheneHub
 
         var userPairResponse = new UserPairDto(otherUser.ToUserData(),
             otherEntry == null ? IndividualPairStatus.OneSided : IndividualPairStatus.Bidirectional,
-            ownPerm, otherPerm);
+            ownPerm, otherPerm)
+        {
+            RemoteClientVersion = GetKnownClientVersion(otherUser.UID)
+        };
 
         await Clients.User(user.UID).Client_UserAddClientPair(userPairResponse).ConfigureAwait(false);
 
@@ -133,8 +136,8 @@ public partial class SpheneHub
 
         if (!ownPerm.IsPaused() && !otherPerm.IsPaused())
         {
-            await Clients.User(UserUID).Client_UserSendOnline(new(otherUser.ToUserData(), otherIdent)).ConfigureAwait(false);
-            await Clients.User(otherUser.UID).Client_UserSendOnline(new(user.ToUserData(), UserCharaIdent)).ConfigureAwait(false);
+            await Clients.User(UserUID).Client_UserSendOnline(new(otherUser.ToUserData(), otherIdent, GetKnownClientVersion(otherUser.UID))).ConfigureAwait(false);
+            await Clients.User(otherUser.UID).Client_UserSendOnline(new(user.ToUserData(), UserCharaIdent, GetKnownClientVersion(user.UID))).ConfigureAwait(false);
         }
     }
 
@@ -165,7 +168,7 @@ public partial class SpheneHub
 
         _spheneCensus.PublishStatistics(UserUID, censusData);
 
-        return pairs.Select(p => new OnlineUserIdentDto(new UserData(p.Key), p.Value)).ToList();
+        return pairs.Select(p => new OnlineUserIdentDto(new UserData(p.Key), p.Value, GetKnownClientVersion(p.Key))).ToList();
     }
 
     [Authorize(Policy = "Identified")]
@@ -198,7 +201,10 @@ public partial class SpheneHub
                 p.Value.GIDs.Where(g => !string.Equals(g, Constants.IndividualKeyword, StringComparison.OrdinalIgnoreCase)).ToList(),
                 p.Value.OwnPermissions.ToUserPermissions(setSticky: true),
                 p.Value.OtherPermissions.ToUserPermissions(),
-                otherAllowsMods);
+                otherAllowsMods)
+            {
+                RemoteClientVersion = GetKnownClientVersion(p.Key)
+            };
         }).ToList();
     }
 

@@ -23,6 +23,7 @@ namespace SpheneServer.Hubs;
 public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
 {
     private static readonly ConcurrentDictionary<string, string> _userConnections = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> _userClientVersions = new(StringComparer.Ordinal);
     // Map hash keys to sender UIDs for acknowledgment lookup (legacy - will be replaced by batch tracker)
     private static readonly ConcurrentDictionary<string, string> _acknowledgmentSenders = new(StringComparer.Ordinal);
     // New batch acknowledgment tracker for proper session-based acknowledgments
@@ -190,6 +191,8 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
             return;
         }
 
+        _userClientVersions[UserUID] = clientVersion.ToString();
+
         if (_userConnections.TryGetValue(UserUID, out var oldId))
         {
             _logger.LogCallWarning(SpheneHubLogger.Args(_contextAccessor.GetIpAddress(), "UpdatingId", oldId, Context.ConnectionId));
@@ -250,6 +253,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
             finally
             {
                 _userConnections.Remove(UserUID, out _);
+                _userClientVersions.Remove(UserUID, out _);
                 CleanupAcknowledgmentMappingsForUser(UserUID);
                 await ResetMutualVisibilityForUserAsync(UserUID).ConfigureAwait(false);
             }
@@ -321,14 +325,19 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         if (string.IsNullOrEmpty(userAgent))
             return null;
 
-        // User-Agent format: "Sphene/1.2.3"
-        var match = System.Text.RegularExpressions.Regex.Match(userAgent, @"Sphene/(\d+\.\d+\.\d+)");
+        // User-Agent format: "Sphene/1.2.3" or "Sphene/1.2.3.456"
+        var match = System.Text.RegularExpressions.Regex.Match(userAgent, @"Sphene/(\d+\.\d+\.\d+(?:\.\d+)?)");
         if (match.Success && Version.TryParse(match.Groups[1].Value, out var version))
         {
             return version;
         }
 
         return null;
+    }
+
+    private static string? GetKnownClientVersion(string uid)
+    {
+        return _userClientVersions.TryGetValue(uid, out var version) ? version : null;
     }
 
     // Cleanup acknowledgment mappings for a specific user
