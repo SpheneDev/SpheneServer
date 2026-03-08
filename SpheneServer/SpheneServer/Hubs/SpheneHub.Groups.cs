@@ -624,8 +624,8 @@ public partial class SpheneHub
                 var groupUserIdent = await GetUserIdent(pair.GroupUserUID).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(groupUserIdent))
                 {
-                    await Clients.User(UserUID).Client_UserSendOnline(new(pair.ToUserData(), groupUserIdent)).ConfigureAwait(false);
-                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(new(self.ToUserData(), UserCharaIdent)).ConfigureAwait(false);
+                    await Clients.User(UserUID).Client_UserSendOnline(new(pair.ToUserData(), groupUserIdent, GetKnownClientVersion(pair.GroupUserUID))).ConfigureAwait(false);
+                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(new(self.ToUserData(), UserCharaIdent, GetKnownClientVersion(UserUID))).ConfigureAwait(false);
                 }
             }
         }
@@ -1371,8 +1371,8 @@ public partial class SpheneHub
                 var newUserIdent = await GetUserIdent(userUID).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(groupUserIdent) && !string.IsNullOrEmpty(newUserIdent))
                 {
-                    await Clients.User(userUID).Client_UserSendOnline(new(pair.ToUserData(), groupUserIdent)).ConfigureAwait(false);
-                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(new(newUser.ToUserData(), newUserIdent)).ConfigureAwait(false);
+                    await Clients.User(userUID).Client_UserSendOnline(new(pair.ToUserData(), groupUserIdent, GetKnownClientVersion(pair.GroupUserUID))).ConfigureAwait(false);
+                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(new(newUser.ToUserData(), newUserIdent, GetKnownClientVersion(userUID))).ConfigureAwait(false);
                 }
             }
         }

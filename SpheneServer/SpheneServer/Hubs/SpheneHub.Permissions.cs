@@ -96,8 +96,8 @@ public partial class SpheneHub
                 }
                 else
                 {
-                    await Clients.User(UserUID).Client_UserSendOnline(new(new(user.Key), otherCharaIdent)).ConfigureAwait(false);
-                    await Clients.User(user.Key).Client_UserSendOnline(new(new(UserUID), UserCharaIdent)).ConfigureAwait(false);
+                    await Clients.User(UserUID).Client_UserSendOnline(new(new(user.Key), otherCharaIdent, GetKnownClientVersion(user.Key))).ConfigureAwait(false);
+                    await Clients.User(user.Key).Client_UserSendOnline(new(new(UserUID), UserCharaIdent, GetKnownClientVersion(UserUID))).ConfigureAwait(false);
                 }
             }
         }
@@ -163,8 +163,8 @@ public partial class SpheneHub
                     // if we changed to unpaused and other was not paused either we send online
                     else
                     {
-                        await Clients.User(UserUID).Client_UserSendOnline(new(new(groupUserPair.Key, groupUserPair.Value.Alias), groupUserIdent)).ConfigureAwait(false);
-                        await Clients.User(groupUserPair.Key).Client_UserSendOnline(new(new(UserUID), UserCharaIdent)).ConfigureAwait(false);
+                        await Clients.User(UserUID).Client_UserSendOnline(new(new(groupUserPair.Key, groupUserPair.Value.Alias), groupUserIdent, GetKnownClientVersion(groupUserPair.Key))).ConfigureAwait(false);
+                        await Clients.User(groupUserPair.Key).Client_UserSendOnline(new(new(UserUID), UserCharaIdent, GetKnownClientVersion(UserUID))).ConfigureAwait(false);
                     }
                 }
             }
