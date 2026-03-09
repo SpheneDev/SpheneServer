@@ -334,7 +334,7 @@ public partial class SpheneHub
         _acknowledgmentSenders.AddOrUpdate(dataHash, UserUID, (key, oldValue) => UserUID);
         
         // Log session-based acknowledgment info
-        _logger.LogCallInfo(SpheneHubLogger.Args("Hash:", dataHash[..8], "SessionId:", sessionId[..8], "Recipients:", recipientUids.Count));
+        _logger.LogCallInfo(SpheneHubLogger.Args("Hash:", ShortLogToken(dataHash), "SessionId:", ShortLogToken(sessionId), "Recipients:", recipientUids.Count));
         
         var characterDataDto = new OnlineUserCharaDataDto(new UserData(UserUID), dto.CharaData)
         {
@@ -352,12 +352,59 @@ public partial class SpheneHub
     }
 
     [Authorize(Policy = "Identified")]
+    public Task UserSendCharacterDataAcknowledgmentV2(CharacterDataAcknowledgmentEventDto acknowledgmentEventDto)
+    {
+        if (acknowledgmentEventDto == null)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("Invalid acknowledgment payload - User:", UserUID));
+            LogAcknowledgmentStat(false, "v2", "invalid_payload", string.Empty, string.Empty, null, null);
+            return Task.CompletedTask;
+        }
+
+        if (acknowledgmentEventDto.Acknowledgment == null)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("Invalid acknowledgment payload (missing nested acknowledgment) - User:", UserUID, "Version:", acknowledgmentEventDto.ContractVersion));
+            LogAcknowledgmentStat(false, "v2", "invalid_nested_payload", string.Empty, string.Empty, null, acknowledgmentEventDto.ContractVersion.ToString());
+            return Task.CompletedTask;
+        }
+
+        _logger.LogCallInfo(SpheneHubLogger.Args("AckV2 - User:", UserUID, "Version:", acknowledgmentEventDto.ContractVersion));
+        LogAcknowledgmentStat(true, "v2", "accepted", acknowledgmentEventDto.Acknowledgment.DataHash, acknowledgmentEventDto.Acknowledgment.SessionId, acknowledgmentEventDto.Acknowledgment.Success, acknowledgmentEventDto.ContractVersion.ToString());
+        return UserSendCharacterDataAcknowledgment(acknowledgmentEventDto.Acknowledgment);
+    }
+
+    [Authorize(Policy = "Identified")]
     public async Task UserSendCharacterDataAcknowledgment(CharacterDataAcknowledgmentDto acknowledgmentDto)
     {
-        // Handle new session-based acknowledgments
-        if (!string.IsNullOrEmpty(acknowledgmentDto.SessionId))
+        if (acknowledgmentDto == null)
         {
-            if (_batchAcknowledgmentTracker.TryAcknowledge(acknowledgmentDto.SessionId, UserUID, out var session))
+            _logger.LogCallWarning(SpheneHubLogger.Args("Invalid acknowledgment payload - User:", UserUID));
+            LogAcknowledgmentStat(false, "unknown", "invalid_payload", string.Empty, string.Empty, null, null);
+            return;
+        }
+
+        var normalizedHash = acknowledgmentDto.DataHash?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedHash))
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("Invalid acknowledgment hash - User:", UserUID));
+            LogAcknowledgmentStat(false, "unknown", "invalid_hash", normalizedHash, normalizedSessionId: string.Empty, acknowledgmentDto.Success, null);
+            return;
+        }
+
+        var normalizedSessionId = acknowledgmentDto.SessionId?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(acknowledgmentDto.User?.UID)
+            && !string.Equals(acknowledgmentDto.User.UID, UserUID, StringComparison.Ordinal))
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("Acknowledgment sender field ignored - Claimed:", acknowledgmentDto.User.UID, "Actual:", UserUID));
+            LogAcknowledgmentStat(true, "unknown", "sender_field_ignored", normalizedHash, normalizedSessionId, acknowledgmentDto.Success, acknowledgmentDto.User.UID);
+        }
+
+        var acknowledgedAt = acknowledgmentDto.AcknowledgedAt == default ? DateTime.UtcNow : acknowledgmentDto.AcknowledgedAt;
+
+        // Handle new session-based acknowledgments
+        if (!string.IsNullOrEmpty(normalizedSessionId))
+        {
+            if (_batchAcknowledgmentTracker.TryAcknowledge(normalizedSessionId, UserUID, out var session))
             {
                 // Validate that the acknowledging user has a pair relationship with the original sender
                 var pairExists = await DbContext.ClientPairs.AsNoTracking()
@@ -367,47 +414,59 @@ public partial class SpheneHub
                 
                 if (!pairExists)
                 {
-                    _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "SessionId:", acknowledgmentDto.SessionId[..8], "Sender:", session.SenderUid));
+                    _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "SessionId:", ShortLogToken(normalizedSessionId), "Sender:", session.SenderUid));
+                    LogAcknowledgmentStat(false, "session", "pair_missing", normalizedHash, normalizedSessionId, acknowledgmentDto.Success, session.SenderUid);
                     return;
+                }
+
+                var forwardedHash = session.DataHash;
+                if (!string.Equals(normalizedHash, forwardedHash, StringComparison.Ordinal))
+                {
+                    _logger.LogCallWarning(SpheneHubLogger.Args("Session hash mismatch - User:", UserUID, "SessionId:", ShortLogToken(normalizedSessionId), "Provided:", ShortLogToken(normalizedHash), "Expected:", ShortLogToken(forwardedHash)));
+                    LogAcknowledgmentStat(false, "session", "hash_mismatch", normalizedHash, normalizedSessionId, acknowledgmentDto.Success, forwardedHash);
                 }
                 
                 // Create acknowledgment DTO with session information
-                var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.DataHash)
+                var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), forwardedHash)
                 {
                     Success = acknowledgmentDto.Success,
                     ErrorCode = acknowledgmentDto.ErrorCode,
                     ErrorMessage = acknowledgmentDto.ErrorMessage,
-                    AcknowledgedAt = acknowledgmentDto.AcknowledgedAt,
-                    SessionId = acknowledgmentDto.SessionId
+                    AcknowledgedAt = acknowledgedAt,
+                    SessionId = normalizedSessionId
                 };
                 
-                // Send acknowledgment to the original sender
-                await Clients.User(session.SenderUid).Client_UserReceiveCharacterDataAcknowledgment(forwardedAcknowledgment).ConfigureAwait(false);
+                var forwardedViaV2 = await SendAcknowledgmentToSenderAsync(session.SenderUid, forwardedAcknowledgment).ConfigureAwait(false);
+                LogAcknowledgmentStat(true, forwardedViaV2 ? "session_v2" : "session", "forwarded", forwardedHash, normalizedSessionId, acknowledgmentDto.Success, session.SenderUid);
                 
                 // Log individual acknowledgment
-                _logger.LogCallInfo(SpheneHubLogger.Args("SessionAck - User:", UserUID, "SessionId:", acknowledgmentDto.SessionId[..8], "Remaining:", session.PendingRecipients.Count));
+                _logger.LogCallInfo(SpheneHubLogger.Args("SessionAck - User:", UserUID, "SessionId:", ShortLogToken(normalizedSessionId), "Remaining:", session.PendingRecipients.Count));
                 
                 // Check if all recipients have acknowledged
-                if (_batchAcknowledgmentTracker.IsSessionCompleted(acknowledgmentDto.SessionId))
+                if (_batchAcknowledgmentTracker.IsSessionCompleted(normalizedSessionId))
                 {
-                    _batchAcknowledgmentTracker.CompleteSession(acknowledgmentDto.SessionId);
-                    _logger.LogCallInfo(SpheneHubLogger.Args("SessionComplete - SessionId:", acknowledgmentDto.SessionId[..8]));
+                    _batchAcknowledgmentTracker.CompleteSession(normalizedSessionId);
+                    RememberSessionAcknowledgmentCompletion(session.SenderUid, forwardedHash);
+                    _logger.LogCallInfo(SpheneHubLogger.Args("SessionComplete - SessionId:", ShortLogToken(normalizedSessionId)));
+                    LogAcknowledgmentStat(true, "session", "completed", forwardedHash, normalizedSessionId, acknowledgmentDto.Success, null);
                 }
             }
             else
             {
-                _logger.LogCallWarning(SpheneHubLogger.Args("Invalid session acknowledgment - User:", UserUID, "SessionId:", acknowledgmentDto.SessionId[..8]));
+                _logger.LogCallWarning(SpheneHubLogger.Args("Invalid session acknowledgment - User:", UserUID, "SessionId:", ShortLogToken(normalizedSessionId)));
+                LogAcknowledgmentStat(false, "session", "invalid_session", normalizedHash, normalizedSessionId, acknowledgmentDto.Success, null);
             }
         }
         // Handle legacy hash-based acknowledgments for backward compatibility
-        else if (_acknowledgmentSenders.TryGetValue(acknowledgmentDto.DataHash, out var originalSenderUid))
+        else if (_acknowledgmentSenders.TryGetValue(normalizedHash, out var originalSenderUid))
         {
             // Clean up the acknowledgment mapping FIRST to prevent duplicate processing
-            var removed = _acknowledgmentSenders.TryRemove(acknowledgmentDto.DataHash, out _);
+            var removed = _acknowledgmentSenders.TryRemove(normalizedHash, out _);
             
             if (!removed)
             {
-                _logger.LogCallWarning(SpheneHubLogger.Args("Acknowledgment already processed - User:", UserUID, "Hash:", acknowledgmentDto.DataHash[..8]));
+                _logger.LogCallWarning(SpheneHubLogger.Args("Acknowledgment already processed - User:", UserUID, "Hash:", ShortLogToken(normalizedHash)));
+                LogAcknowledgmentStat(false, "legacy", "already_processed", normalizedHash, string.Empty, acknowledgmentDto.Success, originalSenderUid);
                 return;
             }
             
@@ -419,26 +478,113 @@ public partial class SpheneHub
             
             if (!pairExists)
             {
-                _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "Hash:", acknowledgmentDto.DataHash[..8], "Sender:", originalSenderUid));
+                _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "Hash:", ShortLogToken(normalizedHash), "Sender:", originalSenderUid));
+                LogAcknowledgmentStat(false, "legacy", "pair_missing", normalizedHash, string.Empty, acknowledgmentDto.Success, originalSenderUid);
+                return;
+            }
+
+            if (WasRecentlyCompletedAsSessionAcknowledgment(originalSenderUid, normalizedHash))
+            {
+                LogAcknowledgmentStat(true, "legacy", "suppressed_duplicate_after_session", normalizedHash, string.Empty, acknowledgmentDto.Success, originalSenderUid);
                 return;
             }
             
             // Create a new acknowledgment DTO with the current user (recipient) as the acknowledging user
-            var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), acknowledgmentDto.DataHash)
+            var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), normalizedHash)
             {
                 Success = acknowledgmentDto.Success,
                 ErrorCode = acknowledgmentDto.ErrorCode,
                 ErrorMessage = acknowledgmentDto.ErrorMessage,
-                AcknowledgedAt = acknowledgmentDto.AcknowledgedAt
+                AcknowledgedAt = acknowledgedAt
             };
             
-            // Send acknowledgment only to the original sender
-            await Clients.User(originalSenderUid).Client_UserReceiveCharacterDataAcknowledgment(forwardedAcknowledgment).ConfigureAwait(false);
+            var forwardedViaV2 = await SendAcknowledgmentToSenderAsync(originalSenderUid, forwardedAcknowledgment).ConfigureAwait(false);
+            LogAcknowledgmentStat(true, forwardedViaV2 ? "legacy_v2" : "legacy", "forwarded", normalizedHash, string.Empty, acknowledgmentDto.Success, originalSenderUid);
             
-            _logger.LogCallInfo(SpheneHubLogger.Args("LegacyAck - User:", UserUID, "Hash:", acknowledgmentDto.DataHash[..8]));
+            _logger.LogCallInfo(SpheneHubLogger.Args("LegacyAck - User:", UserUID, "Hash:", ShortLogToken(normalizedHash)));
+        }
+        else
+        {
+            LogAcknowledgmentStat(false, "legacy", "sender_not_found", normalizedHash, string.Empty, acknowledgmentDto.Success, null);
         }
         
         _SpheneMetrics.IncCounter(MetricsAPI.CounterUserPushData);
+    }
+
+    private static string ShortLogToken(string value, int length = 8)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "<empty>";
+        }
+
+        return value.Length <= length ? value : value[..length];
+    }
+
+    private void LogAcknowledgmentStat(bool success, string mode, string outcome, string hash, string normalizedSessionId, bool? ackSuccess, string? detail)
+    {
+        var args = SpheneHubLogger.Args(
+            "AckStat",
+            "Success:", success,
+            "Mode:", mode,
+            "Outcome:", outcome,
+            "User:", UserUID,
+            "Hash:", ShortLogToken(hash),
+            "SessionId:", ShortLogToken(normalizedSessionId),
+            "AckSuccess:", ackSuccess,
+            "Detail:", detail ?? string.Empty);
+
+        if (success)
+        {
+            _logger.LogCallInfo(args);
+            return;
+        }
+
+        _logger.LogCallWarning(args);
+    }
+
+    private async Task<bool> SendAcknowledgmentToSenderAsync(string senderUid, CharacterDataAcknowledgmentDto acknowledgment)
+    {
+        try
+        {
+            await Clients.User(senderUid).Client_UserReceiveCharacterDataAcknowledgmentV2(new CharacterDataAcknowledgmentEventDto(acknowledgment)).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("AckV2 forward failed, falling back to V1", "Sender:", senderUid, "Hash:", ShortLogToken(acknowledgment.DataHash), "Error:", ex.Message));
+            await Clients.User(senderUid).Client_UserReceiveCharacterDataAcknowledgment(acknowledgment).ConfigureAwait(false);
+            return false;
+        }
+    }
+
+    private static void RememberSessionAcknowledgmentCompletion(string senderUid, string hash)
+    {
+        PruneOldSessionAcknowledgmentCompletions();
+        _recentSessionAcknowledgments[GetSessionCompletionKey(senderUid, hash)] = DateTime.UtcNow;
+    }
+
+    private static bool WasRecentlyCompletedAsSessionAcknowledgment(string senderUid, string hash)
+    {
+        PruneOldSessionAcknowledgmentCompletions();
+        return _recentSessionAcknowledgments.ContainsKey(GetSessionCompletionKey(senderUid, hash));
+    }
+
+    private static void PruneOldSessionAcknowledgmentCompletions()
+    {
+        var cutoff = DateTime.UtcNow.AddSeconds(-30);
+        foreach (var kvp in _recentSessionAcknowledgments)
+        {
+            if (kvp.Value < cutoff)
+            {
+                _recentSessionAcknowledgments.TryRemove(kvp.Key, out _);
+            }
+        }
+    }
+
+    private static string GetSessionCompletionKey(string senderUid, string hash)
+    {
+        return senderUid + "|" + hash;
     }
 
     [Authorize(Policy = "Identified")]
