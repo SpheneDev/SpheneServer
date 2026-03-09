@@ -28,6 +28,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private static readonly ConcurrentDictionary<string, string> _acknowledgmentSenders = new(StringComparer.Ordinal);
     // New batch acknowledgment tracker for proper session-based acknowledgments
     private static readonly BatchAcknowledgmentTracker _batchAcknowledgmentTracker = new();
+    private static readonly ConcurrentDictionary<string, DateTime> _recentSessionAcknowledgments = new(StringComparer.Ordinal);
     // Track mutual visibility reports per ordered pair key (uidA|uidB)
     private static readonly ConcurrentDictionary<string, MutualVisibilityState> _mutualVisibilityStates = new(StringComparer.Ordinal);
     private readonly SpheneMetrics _SpheneMetrics;
@@ -361,6 +362,15 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         
         // Clean up batch acknowledgment sessions for this user
         _batchAcknowledgmentTracker.CleanupSessionsForUser(userUid);
+
+        var recentSessionKeys = _recentSessionAcknowledgments.Keys
+            .Where(k => k.StartsWith(userUid + "|", StringComparison.Ordinal))
+            .ToList();
+
+        foreach (var key in recentSessionKeys)
+        {
+            _recentSessionAcknowledgments.TryRemove(key, out _);
+        }
     }
 
     public async Task Client_UserAckYouUpdate(UserPermissionsDto dto)
