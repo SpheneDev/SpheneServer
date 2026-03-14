@@ -102,6 +102,23 @@ public partial class SpheneHub
             }
         }
 
+        var reversePermissions = await DbContext.Permissions.SingleOrDefaultAsync(u => u.UserUID == otherUser.UID && u.OtherUserUID == user.UID).ConfigureAwait(false);
+        if (reversePermissions == null)
+        {
+            var otherDefaultPermissions = await DbContext.UserDefaultPreferredPermissions.AsNoTracking().SingleOrDefaultAsync(f => f.UserUID == otherUser.UID).ConfigureAwait(false);
+            reversePermissions = new UserPermissionSet()
+            {
+                User = otherUser,
+                OtherUser = user,
+                DisableAnimations = otherDefaultPermissions?.DisableIndividualAnimations ?? false,
+                DisableSounds = otherDefaultPermissions?.DisableIndividualSounds ?? false,
+                DisableVFX = otherDefaultPermissions?.DisableIndividualVFX ?? false,
+                IsPaused = false,
+                Sticky = false
+            };
+            await DbContext.Permissions.AddAsync(reversePermissions).ConfigureAwait(false);
+        }
+
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
 
         // get the opposite entry of the client pair
@@ -112,15 +129,31 @@ public partial class SpheneHub
 
         var ownPerm = permissions.ToUserPermissions(setSticky: true);
         var otherPerm = otherPermissions.ToUserPermissions();
+        var reverseOwnPerm = reversePermissions.ToUserPermissions(setSticky: true);
+        var reverseOtherPerm = permissions.ToUserPermissions();
 
         var userPairResponse = new UserPairDto(otherUser.ToUserData(),
             otherEntry == null ? IndividualPairStatus.OneSided : IndividualPairStatus.Bidirectional,
             ownPerm, otherPerm)
         {
+            IsOutgoingIndividualPair = true,
             RemoteClientVersion = GetKnownClientVersion(otherUser.UID)
         };
 
         await Clients.User(user.UID).Client_UserAddClientPair(userPairResponse).ConfigureAwait(false);
+
+        if (otherIdent != null && otherEntry == null)
+        {
+            var reverseUserPairResponse = new UserPairDto(user.ToUserData(),
+                IndividualPairStatus.OneSided,
+                reverseOwnPerm, reverseOtherPerm)
+            {
+                IsOutgoingIndividualPair = false,
+                RemoteClientVersion = GetKnownClientVersion(user.UID)
+            };
+
+            await Clients.User(otherUser.UID).Client_UserAddClientPair(reverseUserPairResponse).ConfigureAwait(false);
+        }
 
         // check if other user is online
         if (otherIdent == null || otherEntry == null) return;
@@ -203,6 +236,7 @@ public partial class SpheneHub
                 p.Value.OtherPermissions.ToUserPermissions(),
                 otherAllowsMods)
             {
+                IsOutgoingIndividualPair = p.Value.IsOutgoingIndividualPair,
                 RemoteClientVersion = GetKnownClientVersion(p.Key)
             };
         }).ToList();
@@ -681,12 +715,15 @@ public partial class SpheneHub
 
         await Clients.User(UserUID).Client_UserRemoveClientPair(dto).ConfigureAwait(false);
 
-        // check if opposite entry exists
-        if (!pairData.IndividuallyPaired) return;
-
         // check if other user is online, if no then there is no need to do anything further
         var otherIdent = await GetUserIdent(dto.User.UID).ConfigureAwait(false);
         if (otherIdent == null) return;
+
+        if (!pairData.IndividuallyPaired)
+        {
+            await Clients.User(dto.User.UID).Client_UserRemoveClientPair(new(new(UserUID))).ConfigureAwait(false);
+            return;
+        }
 
         // if the other user had paused the user the state will be offline for either, do nothing
         bool callerHadPaused = pairData.OwnPermissions?.IsPaused ?? false;

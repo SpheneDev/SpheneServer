@@ -274,7 +274,8 @@ public partial class SpheneHub
                               UserUID = cp.UserUID,
                               OtherUserUID = cp.OtherUserUID,
                               Gid = string.Empty,
-                              Synced = c != null
+                              Synced = c != null,
+                              IsOutgoingIndividualPair = true
                           };
 
 
@@ -294,7 +295,8 @@ public partial class SpheneHub
                              UserUID = gp.GroupUserUID,
                              OtherUserUID = gp2.GroupUserUID,
                              Gid = Convert.ToString(gp2.GroupGID),
-                             Synced = true
+                             Synced = true,
+                             IsOutgoingIndividualPair = false
                          };
 
         var allPairs = clientPairs.Concat(groupPairs);
@@ -323,7 +325,8 @@ public partial class SpheneHub
                          GID = user.Gid,
                          Synced = user.Synced,
                          OwnPermissions = ownperm,
-                         OtherPermissions = otherperm
+                         OtherPermissions = otherperm,
+                         IsOutgoingIndividualPair = user.IsOutgoingIndividualPair
                      };
 
         var resultList = await result.AsNoTracking().ToListAsync().ConfigureAwait(false);
@@ -336,7 +339,8 @@ public partial class SpheneHub
             resultList.Max(p => p.Synced),
             resultList.Select(p => string.IsNullOrEmpty(p.GID) ? Constants.IndividualKeyword : p.GID).ToList(),
             resultList[0].OwnPermissions,
-            resultList[0].OtherPermissions);
+            resultList[0].OtherPermissions,
+            resultList.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair));
     }
 
     private async Task<Dictionary<string, UserInfo>> GetAllPairInfo(string uid)
@@ -360,8 +364,32 @@ public partial class SpheneHub
                               UserUID = cp.UserUID,
                               OtherUserUID = cp.OtherUserUID,
                               Gid = string.Empty,
-                              Synced = c != null
+                              Synced = c != null,
+                              IsOutgoingIndividualPair = true
                           };
+
+        var incomingClientPairs = from cp in DbContext.ClientPairs.AsNoTracking().Where(u => u.OtherUserUID == uid)
+                                  join cp2 in DbContext.ClientPairs.AsNoTracking().Where(u => u.UserUID == uid)
+                                  on new
+                                  {
+                                      UserUID = cp.UserUID,
+                                      OtherUserUID = cp.OtherUserUID
+                                  }
+                                  equals new
+                                  {
+                                      UserUID = cp2.OtherUserUID,
+                                      OtherUserUID = cp2.UserUID
+                                  } into joined
+                                  from c in joined.DefaultIfEmpty()
+                                  where cp.OtherUserUID == uid && c == null
+                                  select new
+                                  {
+                                      UserUID = uid,
+                                      OtherUserUID = cp.UserUID,
+                                      Gid = string.Empty,
+                                      Synced = false,
+                                      IsOutgoingIndividualPair = false
+                                  };
 
 
         var groupPairs = from gp in DbContext.GroupPairs.AsNoTracking().Where(u => u.GroupUserUID == uid)
@@ -379,10 +407,11 @@ public partial class SpheneHub
                              UserUID = gp.GroupUserUID,
                              OtherUserUID = gp2.GroupUserUID,
                              Gid = Convert.ToString(gp2.GroupGID),
-                             Synced = true
+                             Synced = true,
+                             IsOutgoingIndividualPair = false
                          };
 
-        var allPairs = clientPairs.Concat(groupPairs);
+        var allPairs = clientPairs.Concat(incomingClientPairs).Concat(groupPairs);
 
         var result = from user in allPairs
                      join u in DbContext.Users.AsNoTracking() on user.OtherUserUID equals u.UID
@@ -408,7 +437,8 @@ public partial class SpheneHub
                          GID = user.Gid,
                          Synced = user.Synced,
                          OwnPermissions = ownperm,
-                         OtherPermissions = otherperm
+                         OtherPermissions = otherperm,
+                         IsOutgoingIndividualPair = user.IsOutgoingIndividualPair
                      };
 
         var resultList = await result.AsNoTracking().ToListAsync().ConfigureAwait(false);
@@ -419,7 +449,8 @@ public partial class SpheneHub
                 g.Max(p => p.Synced),
                 g.Select(p => string.IsNullOrEmpty(p.GID) ? Constants.IndividualKeyword : p.GID).ToList(),
                 g.First().OwnPermissions,
-                g.First().OtherPermissions);
+                g.First().OtherPermissions,
+                g.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair));
         }, StringComparer.Ordinal);
     }
 
@@ -495,5 +526,5 @@ public partial class SpheneHub
         }
     }
 
-    public record UserInfo(string Alias, bool IndividuallyPaired, bool IsSynced, List<string> GIDs, UserPermissionSet? OwnPermissions, UserPermissionSet? OtherPermissions);
+    public record UserInfo(string Alias, bool IndividuallyPaired, bool IsSynced, List<string> GIDs, UserPermissionSet? OwnPermissions, UserPermissionSet? OtherPermissions, bool IsOutgoingIndividualPair);
 }
