@@ -37,6 +37,8 @@ internal class DiscordBot : IHostedService
     private static readonly RedisKey LastPostedTestBuildHashKey = new RedisKey("discord:changelog:lastPostedHash:testbuild");
     private static readonly RedisKey LastPostedReleaseMessageIdKey = new RedisKey("discord:changelog:lastPostedMessageId:release");
     private static readonly RedisKey LastPostedTestBuildMessageIdKey = new RedisKey("discord:changelog:lastPostedMessageId:testbuild");
+    private static readonly RedisKey LegacyFormatBackfillKey = new RedisKey("discord:changelog:legacyFormatBackfill");
+    private const string LegacyBackfillVersion = "v3";
 
     public DiscordBot(DiscordBotServices botServices, IServiceProvider services, IConfigurationService<ServicesConfiguration> configuration,
         IDbContextFactory<SpheneDbContext> dbContextFactory,
@@ -509,6 +511,19 @@ internal class DiscordBot : IHostedService
             return;
         }
 
+        try
+        {
+            await BackfillLegacyChangelogPostsAsync(changelogDoc, releaseChannelId, testBuildChannelId, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Legacy changelog backfill failed; continuing with regular changelog posting");
+        }
+
         if (releaseChannelId != null && release.Version != null && release.DownloadUrl != null)
         {
             await TryPostSingleChangelogAsync(
@@ -572,7 +587,6 @@ internal class DiscordBot : IHostedService
         var (embed, fingerprint) = BuildChangelogEmbedWithFingerprint(entry, expectedVersion, expectedIsPrerelease);
 
         var lastPosted = await db.StringGetAsync(lastPostedRedisKey).ConfigureAwait(false);
-        var lastPostedHash = await db.StringGetAsync(lastPostedHashRedisKey).ConfigureAwait(false);
         var lastPostedMessageIdRaw = await db.StringGetAsync(lastPostedMessageIdRedisKey).ConfigureAwait(false);
 
         // 1. Fast Path: Check if we have a valid known message ID in Redis
@@ -620,15 +634,88 @@ internal class DiscordBot : IHostedService
             return;
         }
 
-        if (!lastPostedHash.IsNullOrEmpty && string.Equals(lastPostedHash.ToString(), fingerprint, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
         var posted = await channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
         await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
         await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
         await db.StringSetAsync(lastPostedMessageIdRedisKey, posted.Id.ToString()).ConfigureAwait(false);
+    }
+
+    private async Task BackfillLegacyChangelogPostsAsync(JsonDocument changelogDoc, ulong? releaseChannelId, ulong? testBuildChannelId, CancellationToken token)
+    {
+        var db = _connectionMultiplexer.GetDatabase();
+        var backfillState = await db.StringGetAsync(LegacyFormatBackfillKey).ConfigureAwait(false);
+        if (!backfillState.IsNullOrEmpty && string.Equals(backfillState.ToString(), LegacyBackfillVersion, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        int updatedCount = 0;
+        if (releaseChannelId != null)
+        {
+            updatedCount += await BackfillLegacyChangelogPostsForChannelAsync(releaseChannelId.Value, changelogDoc, false, token).ConfigureAwait(false);
+        }
+
+        if (testBuildChannelId != null)
+        {
+            updatedCount += await BackfillLegacyChangelogPostsForChannelAsync(testBuildChannelId.Value, changelogDoc, true, token).ConfigureAwait(false);
+        }
+
+        await db.StringSetAsync(LegacyFormatBackfillKey, LegacyBackfillVersion).ConfigureAwait(false);
+        _logger.LogInformation("Changelog backfill finished. Updated messages: {count}", updatedCount);
+    }
+
+    private async Task<int> BackfillLegacyChangelogPostsForChannelAsync(ulong channelId, JsonDocument changelogDoc, bool isPrerelease, CancellationToken token)
+    {
+        var channel = await _discordClient.GetChannelAsync(channelId).ConfigureAwait(false) as IMessageChannel;
+        if (channel == null)
+        {
+            return 0;
+        }
+
+        int updatedCount = 0;
+        var botUserId = _discordClient.CurrentUser?.Id;
+        var messages = await channel.GetMessagesAsync(1000).FlattenAsync().ConfigureAwait(false);
+        foreach (var message in messages)
+        {
+            token.ThrowIfCancellationRequested();
+            if (botUserId != null && message.Author.Id != botUserId.Value)
+            {
+                continue;
+            }
+
+            if (message is not IUserMessage userMessage)
+            {
+                continue;
+            }
+
+            if (!TryExtractChangelogIdentity(message.Embeds, isPrerelease, out var version, out var existingFingerprint))
+            {
+                continue;
+            }
+
+            if (!TryFindChangelogEntry(changelogDoc, version, isPrerelease, out var entry))
+            {
+                continue;
+            }
+
+            var (newEmbed, newFingerprint) = BuildChangelogEmbedWithFingerprint(entry, version, isPrerelease);
+            if (string.Equals(existingFingerprint, newFingerprint, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                await userMessage.ModifyAsync(p => p.Embed = newEmbed).ConfigureAwait(false);
+                updatedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to backfill changelog message {messageId}", userMessage.Id);
+            }
+        }
+
+        return updatedCount;
     }
 
     private async Task<(IUserMessage Message, string? Fingerprint)?> TryFindChangelogMessageAsync(IMessageChannel channel, string expectedFooterPrefix, string expectedEmbedTitle, CancellationToken token)
@@ -671,6 +758,102 @@ internal class DiscordBot : IHostedService
         return null;
     }
 
+    private static bool TryExtractChangelogIdentity(IEnumerable<IEmbed> embeds, bool expectedIsPrerelease, out string version, out string? fingerprint)
+    {
+        foreach (var embed in embeds)
+        {
+            if (TryExtractIdentityFromFooter(embed.Footer?.Text, out var footerVersion, out var footerIsPrerelease))
+            {
+                if (footerIsPrerelease == expectedIsPrerelease)
+                {
+                    version = footerVersion;
+                    fingerprint = TryExtractChangelogFingerprint(embed.Footer?.Text);
+                    return true;
+                }
+
+                continue;
+            }
+
+            if (TryExtractIdentityFromTitle(embed.Title, out var titleVersion, out var titleIsPrerelease))
+            {
+                if (titleIsPrerelease == expectedIsPrerelease)
+                {
+                    version = titleVersion;
+                    fingerprint = TryExtractChangelogFingerprint(embed.Footer?.Text);
+                    return true;
+                }
+            }
+        }
+
+        version = string.Empty;
+        fingerprint = null;
+        return false;
+    }
+
+    private static bool TryExtractIdentityFromFooter(string? footerText, out string version, out bool isPrerelease)
+    {
+        version = string.Empty;
+        isPrerelease = false;
+        if (string.IsNullOrWhiteSpace(footerText))
+        {
+            return false;
+        }
+
+        var trimmed = footerText.Trim();
+        var revIndex = trimmed.IndexOf(" rev ", StringComparison.OrdinalIgnoreCase);
+        if (revIndex > 0)
+        {
+            trimmed = trimmed[..revIndex].Trim();
+        }
+
+        const string testPrefix = "changelog testbuild ";
+        if (trimmed.StartsWith(testPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            version = trimmed[testPrefix.Length..].Trim();
+            isPrerelease = true;
+            return !string.IsNullOrWhiteSpace(version);
+        }
+
+        const string releasePrefix = "changelog release ";
+        if (trimmed.StartsWith(releasePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            version = trimmed[releasePrefix.Length..].Trim();
+            isPrerelease = false;
+            return !string.IsNullOrWhiteSpace(version);
+        }
+
+        return false;
+    }
+
+    private static bool TryExtractIdentityFromTitle(string? title, out string version, out bool isPrerelease)
+    {
+        version = string.Empty;
+        isPrerelease = false;
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        var trimmed = title.Trim();
+        const string testPrefix = "Sphene Testbuild ";
+        if (trimmed.StartsWith(testPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            version = trimmed[testPrefix.Length..].Trim();
+            isPrerelease = true;
+            return !string.IsNullOrWhiteSpace(version);
+        }
+
+        const string releasePrefix = "Sphene Release ";
+        if (trimmed.StartsWith(releasePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            version = trimmed[releasePrefix.Length..].Trim();
+            isPrerelease = false;
+            return !string.IsNullOrWhiteSpace(version);
+        }
+
+        return false;
+    }
+
     private (Embed Embed, string Fingerprint) BuildChangelogEmbedWithFingerprint(JsonElement entry, string version, bool isPrerelease)
     {
         var header = isPrerelease ? "Sphene Testbuild" : "Sphene Release";
@@ -685,7 +868,7 @@ internal class DiscordBot : IHostedService
         descBuilder.AppendLine($"# {header} {version}");
 
         var cleanedTitle = NormalizeChangelogEntryTitleLine(title);
-        var cleanedTitleTrimmed = cleanedTitle?.Trim();
+        var cleanedTitleTrimmed = SanitizeChangelogTextLine(cleanedTitle);
         if (!string.IsNullOrWhiteSpace(cleanedTitleTrimmed) && IsRedundantChangelogTitleLine(cleanedTitleTrimmed, header, version))
         {
             cleanedTitleTrimmed = null;
@@ -695,10 +878,11 @@ internal class DiscordBot : IHostedService
             descBuilder.AppendLine();
             descBuilder.AppendLine(cleanedTitleTrimmed);
         }
-        if (!string.IsNullOrWhiteSpace(description))
+        var cleanedDescription = SanitizeChangelogTextLine(description);
+        if (!string.IsNullOrWhiteSpace(cleanedDescription))
         {
             if (descBuilder.Length > 0) descBuilder.AppendLine();
-            descBuilder.AppendLine($"## {description!.Trim()}");
+            descBuilder.AppendLine(cleanedDescription);
         }
 
         var changesText = FormatChangelogChanges(entry, maxChars: 2500);
@@ -812,6 +996,36 @@ internal class DiscordBot : IHostedService
         return string.IsNullOrWhiteSpace(remainder) ? null : remainder;
     }
 
+    private static string? SanitizeChangelogTextLine(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var lines = value.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var cleanedLines = new List<string>(lines.Length);
+        foreach (var originalLine in lines)
+        {
+            var text = originalLine.Trim();
+            while (text.StartsWith('>'))
+            {
+                text = text[1..].TrimStart();
+            }
+
+            while (text.StartsWith('#'))
+            {
+                text = text[1..].TrimStart();
+            }
+
+            cleanedLines.Add(text);
+        }
+
+        var normalized = string.Join(Environment.NewLine, cleanedLines).Trim();
+
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
     private static bool LooksLikeShortDateTag(string tag)
     {
         if (tag.Length != 8)
@@ -846,7 +1060,7 @@ internal class DiscordBot : IHostedService
 
             if (change.ValueKind == JsonValueKind.String)
             {
-                var line = change.GetString();
+                var line = SanitizeChangelogTextLine(change.GetString());
                 if (!string.IsNullOrWhiteSpace(line))
                 {
                     AppendLineBounded(builder, $"• {line.Trim()}", maxChars);
@@ -857,7 +1071,7 @@ internal class DiscordBot : IHostedService
                 string text = string.Empty;
                 if (change.TryGetProperty("description", out var cdProp) && cdProp.ValueKind == JsonValueKind.String)
                 {
-                    text = cdProp.GetString() ?? string.Empty;
+                    text = SanitizeChangelogTextLine(cdProp.GetString()) ?? string.Empty;
                 }
 
                 var hasSub = change.TryGetProperty("sub", out var subProp) && subProp.ValueKind == JsonValueKind.Array;
@@ -868,7 +1082,7 @@ internal class DiscordBot : IHostedService
                     {
                         AppendNewLineBounded(builder, maxChars);
                     }
-                    AppendLineBounded(builder, $"**{headerText}**", maxChars);
+                    AppendLineBounded(builder, $"## {headerText}", maxChars);
                 }
                 else if (!string.IsNullOrWhiteSpace(headerText))
                 {
@@ -955,7 +1169,7 @@ internal class DiscordBot : IHostedService
 
         foreach (var sub in subProp.EnumerateArray())
         {
-            var rawText = ExtractSubText(sub);
+            var rawText = SanitizeChangelogTextLine(ExtractSubText(sub));
             if (string.IsNullOrWhiteSpace(rawText))
             {
                 continue;
