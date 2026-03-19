@@ -698,7 +698,7 @@ internal class DiscordBot : IHostedService
         if (!string.IsNullOrWhiteSpace(description))
         {
             if (descBuilder.Length > 0) descBuilder.AppendLine();
-            descBuilder.AppendLine(description!.Trim());
+            descBuilder.AppendLine($"## {description!.Trim()}");
         }
 
         var changesText = FormatChangelogChanges(entry, maxChars: 2500);
@@ -893,7 +893,7 @@ internal class DiscordBot : IHostedService
                                 AppendNewLineBounded(builder, maxChars);
                             }
 
-                            AppendLineBounded(builder, $"**{section.Heading}**", maxChars);
+                            AppendLineBounded(builder, $"- **{section.Heading}**", maxChars);
                         }
 
                         foreach (var item in section.Items)
@@ -905,7 +905,7 @@ internal class DiscordBot : IHostedService
 
                             if (!string.IsNullOrWhiteSpace(item))
                             {
-                                AppendLineBounded(builder, $"• {item}", maxChars);
+                                AppendLineBounded(builder, $"  - {item}", maxChars);
                             }
                         }
 
