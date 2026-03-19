@@ -862,7 +862,6 @@ internal class DiscordBot : IHostedService
 
                 var hasSub = change.TryGetProperty("sub", out var subProp) && subProp.ValueKind == JsonValueKind.Array;
                 var headerText = text.Trim();
-                var headerPrinted = false;
                 if (!string.IsNullOrWhiteSpace(headerText) && hasSub)
                 {
                     if (builder.Length > 0)
@@ -870,7 +869,6 @@ internal class DiscordBot : IHostedService
                         AppendNewLineBounded(builder, maxChars);
                     }
                     AppendLineBounded(builder, $"**{headerText}**", maxChars);
-                    headerPrinted = true;
                 }
                 else if (!string.IsNullOrWhiteSpace(headerText))
                 {
@@ -879,30 +877,39 @@ internal class DiscordBot : IHostedService
 
                 if (hasSub)
                 {
-                    foreach (var sub in subProp.EnumerateArray())
+                    var groupedSubItems = GroupChangelogSubItems(subProp);
+                    var printedAnySection = false;
+                    foreach (var section in groupedSubItems)
                     {
                         if (builder.Length >= maxChars)
                         {
                             break;
                         }
 
-                        string stext = string.Empty;
-                        if (sub.ValueKind == JsonValueKind.String)
+                        if (!string.IsNullOrWhiteSpace(section.Heading))
                         {
-                            stext = sub.GetString() ?? string.Empty;
-                        }
-                        else if (sub.ValueKind == JsonValueKind.Object &&
-                                 sub.TryGetProperty("description", out var sdProp) &&
-                                 sdProp.ValueKind == JsonValueKind.String)
-                        {
-                            stext = sdProp.GetString() ?? string.Empty;
+                            if (printedAnySection)
+                            {
+                                AppendNewLineBounded(builder, maxChars);
+                            }
+
+                            AppendLineBounded(builder, $"**{section.Heading}**", maxChars);
                         }
 
-                        if (!string.IsNullOrWhiteSpace(stext))
+                        foreach (var item in section.Items)
                         {
-                            var prefix = headerPrinted ? "• " : "  • ";
-                            AppendLineBounded(builder, $"{prefix}{stext.Trim()}", maxChars);
+                            if (builder.Length >= maxChars)
+                            {
+                                break;
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(item))
+                            {
+                                AppendLineBounded(builder, $"• {item}", maxChars);
+                            }
                         }
+
+                        printedAnySection = true;
                     }
                 }
             }
@@ -941,6 +948,109 @@ internal class DiscordBot : IHostedService
         builder.AppendLine(line);
     }
 
+    private static List<ChangelogSubSection> GroupChangelogSubItems(JsonElement subProp)
+    {
+        var sections = new List<ChangelogSubSection>();
+        ChangelogSubSection? activeSection = null;
+
+        foreach (var sub in subProp.EnumerateArray())
+        {
+            var rawText = ExtractSubText(sub);
+            if (string.IsNullOrWhiteSpace(rawText))
+            {
+                continue;
+            }
+
+            var normalized = TrimBulletPrefix(rawText.Trim());
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                continue;
+            }
+
+            if (TryExtractPrefixSection(normalized, out var heading, out var content))
+            {
+                activeSection = new ChangelogSubSection(heading);
+                sections.Add(activeSection);
+
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    activeSection.Items.Add(content);
+                }
+
+                continue;
+            }
+
+            if (activeSection == null)
+            {
+                activeSection = new ChangelogSubSection(string.Empty);
+                sections.Add(activeSection);
+            }
+
+            activeSection.Items.Add(normalized);
+        }
+
+        return sections;
+    }
+
+    private static string ExtractSubText(JsonElement sub)
+    {
+        if (sub.ValueKind == JsonValueKind.String)
+        {
+            return sub.GetString() ?? string.Empty;
+        }
+
+        if (sub.ValueKind == JsonValueKind.Object &&
+            sub.TryGetProperty("description", out var sdProp) &&
+            sdProp.ValueKind == JsonValueKind.String)
+        {
+            return sdProp.GetString() ?? string.Empty;
+        }
+
+        return string.Empty;
+    }
+
+    private static string TrimBulletPrefix(string value)
+    {
+        if (value.StartsWith("- ", StringComparison.Ordinal))
+        {
+            return value[2..];
+        }
+
+        if (value.StartsWith("* ", StringComparison.Ordinal))
+        {
+            return value[2..];
+        }
+
+        if (value.StartsWith("• ", StringComparison.Ordinal))
+        {
+            return value[2..];
+        }
+
+        return value;
+    }
+
+    private static bool TryExtractPrefixSection(string value, out string heading, out string content)
+    {
+        heading = string.Empty;
+        content = string.Empty;
+
+        var separatorIndex = value.IndexOf(':', StringComparison.Ordinal);
+        if (separatorIndex <= 0)
+        {
+            return false;
+        }
+
+        var parsedHeading = value[..separatorIndex].Trim();
+        if (string.IsNullOrWhiteSpace(parsedHeading))
+        {
+            return false;
+        }
+
+        heading = parsedHeading;
+        content = value[(separatorIndex + 1)..].Trim();
+        return true;
+    }
+
     private static void AppendNewLineBounded(System.Text.StringBuilder builder, int maxChars)
     {
         if (builder.Length + Environment.NewLine.Length > maxChars)
@@ -949,6 +1059,17 @@ internal class DiscordBot : IHostedService
         }
 
         builder.AppendLine();
+    }
+
+    private sealed class ChangelogSubSection
+    {
+        public ChangelogSubSection(string heading)
+        {
+            Heading = heading;
+        }
+
+        public string Heading { get; }
+        public List<string> Items { get; } = new();
     }
 
     private async Task<(ChangelogBuild Release, ChangelogBuild TestBuild)?> TryFetchPluginMasterAsync(CancellationToken token)

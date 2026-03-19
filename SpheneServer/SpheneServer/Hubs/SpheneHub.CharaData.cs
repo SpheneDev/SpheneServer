@@ -103,15 +103,63 @@ public partial class SpheneHub
         try
         {
             _logger.LogCallInfo(SpheneHubLogger.Args("Validating hash", request.UserUID, request.DataHash));
-            
-            // Always store the new hash
-            await StoreNewHash(request.UserUID, request.DataHash).ConfigureAwait(false);
-            
-            // Always return valid to ensure client continues
+
+            var targetUid = request.UserUID?.Trim() ?? string.Empty;
+            var requestedHash = request.DataHash?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(targetUid))
+            {
+                return new CharacterDataHashValidationResponse
+                {
+                    IsValid = false,
+                    CurrentHash = null
+                };
+            }
+
+            if (string.Equals(targetUid, UserUID, StringComparison.Ordinal))
+            {
+                if (!string.IsNullOrWhiteSpace(requestedHash))
+                {
+                    await StoreNewHash(targetUid, requestedHash).ConfigureAwait(false);
+                }
+
+                return new CharacterDataHashValidationResponse
+                {
+                    IsValid = true,
+                    CurrentHash = requestedHash
+                };
+            }
+
+            var pairExists = await DbContext.ClientPairs.AsNoTracking()
+                .AnyAsync(p => (p.UserUID == UserUID && p.OtherUserUID == targetUid)
+                            || (p.UserUID == targetUid && p.OtherUserUID == UserUID))
+                .ConfigureAwait(false);
+
+            if (!pairExists)
+            {
+                _logger.LogCallWarning(SpheneHubLogger.Args("Hash validation denied - no pair", "Requester:", UserUID, "Target:", targetUid));
+                return new CharacterDataHashValidationResponse
+                {
+                    IsValid = false,
+                    CurrentHash = null
+                };
+            }
+
+            var currentHash = await GetStoredHash(targetUid).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(currentHash))
+            {
+                _logger.LogCallInfo(SpheneHubLogger.Args("Hash validation missing server hash", "Target:", targetUid));
+                return new CharacterDataHashValidationResponse
+                {
+                    IsValid = false,
+                    CurrentHash = null
+                };
+            }
+
+            var isValid = string.Equals(currentHash, requestedHash, StringComparison.Ordinal);
             return new CharacterDataHashValidationResponse
             {
-                IsValid = true,
-                CurrentHash = request.DataHash
+                IsValid = isValid,
+                CurrentHash = currentHash
             };
         }
         catch (Exception ex)
@@ -125,6 +173,16 @@ public partial class SpheneHub
                 CurrentHash = request.DataHash
             };
         }
+    }
+
+    private async Task<string?> GetStoredHash(string userUid)
+    {
+        var entry = await DbContext.CharaDataHashes.AsNoTracking()
+            .Where(h => h.ParentId == userUid)
+            .OrderByDescending(h => h.LastUpdated)
+            .FirstOrDefaultAsync()
+            .ConfigureAwait(false);
+        return entry?.Hash;
     }
     
     private async Task StoreNewHash(string userUid, string hash)

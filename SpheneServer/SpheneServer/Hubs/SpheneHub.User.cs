@@ -360,6 +360,7 @@ public partial class SpheneHub
 
         // Get data hash from character data
         var dataHash = dto.CharaData.DataHash.Value;
+        await StoreNewHash(UserUID, dataHash).ConfigureAwait(false);
         
         // Create batch acknowledgment session for tracking individual recipients
         var sessionId = _batchAcknowledgmentTracker.CreateSession(dataHash, UserUID, recipientUids);
