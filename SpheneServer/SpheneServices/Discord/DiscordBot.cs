@@ -1075,6 +1075,12 @@ internal class DiscordBot : IHostedService
                 }
 
                 var hasSub = change.TryGetProperty("sub", out var subProp) && subProp.ValueKind == JsonValueKind.Array;
+                var groupedSubItems = hasSub ? GroupChangelogSubItems(subProp) : new List<ChangelogSubSection>();
+                if (hasSub && groupedSubItems.Count == 0)
+                {
+                    continue;
+                }
+
                 var headerText = text.Trim();
                 if (!string.IsNullOrWhiteSpace(headerText) && hasSub)
                 {
@@ -1091,7 +1097,6 @@ internal class DiscordBot : IHostedService
 
                 if (hasSub)
                 {
-                    var groupedSubItems = GroupChangelogSubItems(subProp);
                     var printedAnySection = false;
                     foreach (var section in groupedSubItems)
                     {
@@ -1169,6 +1174,13 @@ internal class DiscordBot : IHostedService
 
         foreach (var sub in subProp.EnumerateArray())
         {
+            if (TryParseSubcategoryItems(sub, out var parsedSection))
+            {
+                sections.Add(parsedSection);
+                activeSection = parsedSection;
+                continue;
+            }
+
             var rawText = SanitizeChangelogTextLine(ExtractSubText(sub));
             if (string.IsNullOrWhiteSpace(rawText))
             {
@@ -1204,6 +1216,41 @@ internal class DiscordBot : IHostedService
         }
 
         return sections;
+    }
+
+    private static bool TryParseSubcategoryItems(JsonElement sub, out ChangelogSubSection section)
+    {
+        section = new ChangelogSubSection(string.Empty);
+
+        if (sub.ValueKind != JsonValueKind.Object ||
+            !sub.TryGetProperty("subcategory", out var subcategoryProp) ||
+            subcategoryProp.ValueKind != JsonValueKind.String ||
+            !sub.TryGetProperty("items", out var itemsProp) ||
+            itemsProp.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        var heading = SanitizeChangelogTextLine(subcategoryProp.GetString())?.Trim() ?? string.Empty;
+        section = new ChangelogSubSection(heading);
+
+        foreach (var item in itemsProp.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var normalized = SanitizeChangelogTextLine(item.GetString());
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                continue;
+            }
+
+            section.Items.Add(TrimBulletPrefix(normalized.Trim()));
+        }
+
+        return section.Items.Count > 0 || !string.IsNullOrWhiteSpace(section.Heading);
     }
 
     private static string ExtractSubText(JsonElement sub)

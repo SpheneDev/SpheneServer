@@ -284,6 +284,37 @@ public partial class SpheneHub
     }
 
     [Authorize(Policy = "Identified")]
+    public async Task UserRequestCharacterDataRefresh(UserDto userDto)
+    {
+        var targetUid = userDto.User.UID?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(targetUid) || string.Equals(targetUid, UserUID, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var pairInfo = await GetPairInfo(UserUID, targetUid).ConfigureAwait(false);
+        if (pairInfo == null || !pairInfo.IsSynced)
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("Character data refresh denied - users not synced", UserUID, targetUid));
+            return;
+        }
+
+        if (pairInfo.OwnPermissions?.IsPaused == true || pairInfo.OtherPermissions?.IsPaused == true)
+        {
+            _logger.LogCallInfo(SpheneHubLogger.Args("Character data refresh denied - paused pair", UserUID, targetUid));
+            return;
+        }
+
+        var targetIdent = await GetUserIdent(targetUid).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(targetIdent))
+        {
+            return;
+        }
+
+        await Clients.User(targetUid).Client_UserCharacterDataRefreshRequested(new(UserUID)).ConfigureAwait(false);
+    }
+
+    [Authorize(Policy = "Identified")]
     public async Task UserPushData(UserCharaDataMessageDto dto)
     {
         _logger.LogCallInfo(SpheneHubLogger.Args(dto.CharaData.FileReplacements.Count));
