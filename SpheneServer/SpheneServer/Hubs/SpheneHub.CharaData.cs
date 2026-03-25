@@ -550,6 +550,7 @@ public partial class SpheneHub
                 {
                     FileCacheHash = file.HashOrFileSwap,
                     GamePath = file.GamePath,
+                    IsActive = file.IsActive,
                     Parent = charaData
                 });
 
@@ -575,6 +576,7 @@ public partial class SpheneHub
                 {
                     FilePath = file.HashOrFileSwap,
                     GamePath = file.GamePath,
+                    IsActive = file.IsActive,
                     Parent = charaData
                 });
             }
@@ -669,9 +671,9 @@ public partial class SpheneHub
         {
             CustomizeData = charaData.CustomizeData,
             Description = charaData.Description,
-            FileGamePaths = charaData.Files.Select(k => new GamePathEntry(k.FileCacheHash, k.GamePath)).ToList(),
+            FileGamePaths = charaData.Files.Select(k => new GamePathEntry(k.FileCacheHash, k.GamePath, k.IsActive)).ToList(),
             GlamourerData = charaData.GlamourerData,
-            FileSwaps = charaData.FileSwaps.Select(k => new GamePathEntry(k.FilePath, k.GamePath)).ToList(),
+            FileSwaps = charaData.FileSwaps.Select(k => new GamePathEntry(k.FilePath, k.GamePath, k.IsActive)).ToList(),
             ManipulationData = charaData.ManipulationData,
             HeelsData = charaData.HeelsData,
             HonorificData = charaData.HonorificData,
@@ -693,8 +695,8 @@ public partial class SpheneHub
             Description = charaData.Description,
             ExpiryDate = charaData.ExpiryDate ?? DateTime.MaxValue,
             OriginalFiles = charaData.OriginalFiles.Select(k => new GamePathEntry(k.Hash, k.GamePath)).ToList(),
-            FileGamePaths = charaData.Files.Select(k => new GamePathEntry(k.FileCacheHash, k.GamePath)).ToList(),
-            FileSwaps = charaData.FileSwaps.Select(k => new GamePathEntry(k.FilePath, k.GamePath)).ToList(),
+            FileGamePaths = charaData.Files.Select(k => new GamePathEntry(k.FileCacheHash, k.GamePath, k.IsActive)).ToList(),
+            FileSwaps = charaData.FileSwaps.Select(k => new GamePathEntry(k.FilePath, k.GamePath, k.IsActive)).ToList(),
             GlamourerData = charaData.GlamourerData,
             CreatedDate = charaData.CreatedDate,
             UpdatedDate = charaData.UpdatedDate,

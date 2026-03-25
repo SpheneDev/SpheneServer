@@ -70,6 +70,7 @@ public class CharaDataFile
     public virtual FileCache FileCache { get; set; }
     public string FileCacheHash { get; set; }
     public string GamePath { get; set; }
+    public bool IsActive { get; set; }
     public virtual CharaData Parent { get; set; }
     public string ParentId { get; set; }
     public string ParentUploaderUID { get; set; }
@@ -82,6 +83,7 @@ public class CharaDataFileSwap
     public string ParentUploaderUID { get; set; }
     public string GamePath { get; set; }
     public string FilePath { get; set; }
+    public bool IsActive { get; set; }
 }
 
 public class CharaDataPose
