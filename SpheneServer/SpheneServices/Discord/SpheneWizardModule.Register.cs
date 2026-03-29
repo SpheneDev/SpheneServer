@@ -1,4 +1,4 @@
-﻿using Discord.Interactions;
+using Discord.Interactions;
 using Discord;
 using SpheneShared.Data;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +13,47 @@ namespace SpheneServices.Discord;
 
 public partial class SpheneWizardModule
 {
+    [ComponentInteraction("wizard-newuid")]
+    public async Task CreateSecondaryUid()
+    {
+        if (!(await ValidateInteraction().ConfigureAwait(false))) return;
+
+        _logger.LogInformation("{method}:{userId}", nameof(CreateSecondaryUid), Context.Interaction.User.Id);
+
+        await using var db = await GetDbContext().ConfigureAwait(false);
+        var existingAuth = await db.LodeStoneAuth.Include(u => u.User)
+            .SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id && e.StartedAt == null).ConfigureAwait(false);
+
+        EmbedBuilder eb = new();
+        ComponentBuilder cb = new();
+        if (existingAuth == null || existingAuth.User == null)
+        {
+            eb.WithTitle("No account found");
+            eb.WithDescription("You do not have a registered account. Please use Register to initialize your soul connection.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var (uid, key) = await HandleAddSecondaryUser(db, existingAuth.User.UID).ConfigureAwait(false);
+        eb.WithColor(Color.Green);
+        eb.WithTitle($"Secondary soul fragment created, your UID: {uid}");
+        eb.WithDescription("This is your private electrope key. Do not share this electrope key with anyone. **If you lose it, it is irrevocably lost.**"
+                           + Environment.NewLine + Environment.NewLine
+                           + "**__NOTE: Electrope keys are considered legacy. Using the suggested OAuth2 authentication in Sphene, you do not need to use this Electrope Key.__**"
+                           + Environment.NewLine + Environment.NewLine
+                           + $"||**`{key}`**||"
+                           + Environment.NewLine + Environment.NewLine
+                           + "If you want to continue using legacy authentication, enter this key in Sphene Synchronos and hit save to connect to the network."
+                           + Environment.NewLine
+                           + "__NOTE: The Electrope Key only contains the letters ABCDEF and numbers 0 - 9.__"
+                           + Environment.NewLine
+                           + "May your soul resonate with others.");
+        AddHome(cb);
+        await ModifyInteraction(eb, cb).ConfigureAwait(false);
+    }
+
     [ComponentInteraction("wizard-register")]
     public async Task ComponentRegister()
     {
@@ -311,6 +352,47 @@ public partial class SpheneWizardModule
         await _botServices.LogToChannel($"{Context.User.Mention} REGISTER COMPLETE: => {user.UID}").ConfigureAwait(false);
 
         _botServices.DiscordVerifiedUsers.Remove(Context.User.Id, out _);
+
+        return (user.UID, originalSecretKey);
+    }
+
+    private async Task<(string, string)> HandleAddSecondaryUser(SpheneDbContext db, string primaryUserUid)
+    {
+        var primaryUser = await db.Users.SingleOrDefaultAsync(u => u.UID == primaryUserUid).ConfigureAwait(false);
+        if (primaryUser == null)
+        {
+            throw new InvalidOperationException("Primary user not found");
+        }
+
+        var user = new User();
+        var hasValidUid = false;
+        while (!hasValidUid)
+        {
+            var uid = StringUtils.GenerateRandomString(10);
+            if (db.Users.Any(u => u.UID == uid || u.Alias == uid)) continue;
+            user.UID = uid;
+            hasValidUid = true;
+        }
+
+        user.LastLoggedIn = DateTime.UtcNow;
+
+        var originalSecretKeyTime = StringUtils.GenerateRandomString(64) + DateTime.UtcNow.ToString();
+        var originalSecretKey = StringUtils.Sha256String(originalSecretKeyTime);
+        var clientHashedKey = StringUtils.Sha256String(originalSecretKey);
+        string databaseHashedKey = StringUtils.Sha256String(clientHashedKey);
+        var auth = new Auth()
+        {
+            HashedKey = databaseHashedKey,
+            User = user,
+            PrimaryUserUID = primaryUserUid
+        };
+
+        await db.Users.AddAsync(user).ConfigureAwait(false);
+        await db.Auth.AddAsync(auth).ConfigureAwait(false);
+        await db.SaveChangesAsync().ConfigureAwait(false);
+
+        _botServices.Logger.LogInformation("Secondary user created: {primary}:{userUID}", primaryUserUid, user.UID);
+        await _botServices.LogToChannel($"{Context.User.Mention} SECONDARY UID CREATED: primary={primaryUserUid} => {user.UID}").ConfigureAwait(false);
 
         return (user.UID, originalSecretKey);
     }
