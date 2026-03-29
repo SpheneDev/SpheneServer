@@ -125,66 +125,106 @@ public partial class SpheneWizardModule : InteractionModuleBase
     public async Task ChangeAlias()
     {
         if (!(await ValidateInteraction().ConfigureAwait(false))) return;
-        
-        await RespondWithModalAsync<ChangeAliasModal>("wizard-change-alias-modal").ConfigureAwait(false);
-    }
-    
-    [ModalInteraction("wizard-change-alias-modal")]
-    public async Task ProcessChangeAlias(ChangeAliasModal modal)
-    {
-        using var spheneDb = await GetDbContext().ConfigureAwait(false);
-        var discordId = Context.User.Id;
-        var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User).SingleOrDefaultAsync(e => e.DiscordId == discordId).ConfigureAwait(false);
-        
-        if (existingAuth != null && existingAuth.User != null)
+
+        await using var spheneDb = await GetDbContext().ConfigureAwait(false);
+        var primaryAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
+            .SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id && e.StartedAt == null).ConfigureAwait(false);
+
+        EmbedBuilder eb = new();
+        ComponentBuilder cb = new();
+        if (primaryAuth == null || primaryAuth.User == null)
         {
-            EmbedBuilder eb;
-            ComponentBuilder cb;
-            // Überprüfen, ob der Alias bereits vergeben ist
-            bool aliasExists = await spheneDb.Users.AnyAsync(u => u.Alias == modal.NewAlias && u.UID != existingAuth.User.UID).ConfigureAwait(false);
-            
-            if (aliasExists)
-            {
-                eb = new();
-                eb.WithTitle("Soul Identity Conflict");
-                eb.WithDescription($"The soul resonance identifier **{modal.NewAlias}** is already in use by another entity. Please choose a different identifier.");
-                eb.WithColor(Color.Red);
-                
-                cb = new();
-                cb.WithButton("Try Again", "wizard-change-alias", ButtonStyle.Primary, new Emoji("✨"));
-                AddHome(cb);
-                
-                await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
-                return;
-            }
-            
-            existingAuth.User.Alias = modal.NewAlias;
-            await spheneDb.SaveChangesAsync().ConfigureAwait(false);
-            
-            eb = new();
-            eb.WithTitle("Soul Identity Recalibrated");
-            eb.WithDescription($"Your soul resonance identifier has been successfully recalibrated to: **{modal.NewAlias}**" + Environment.NewLine + Environment.NewLine + 
-                "⚠️ **Important:** Please reconnect your Sphene Client once to activate the new identifier.");
-            eb.WithColor(Color.Green);
-            
-            cb = new();
+            eb.WithTitle("No account found");
+            eb.WithDescription("You do not have a registered account. Please use Register to initialize your soul connection.");
+            eb.WithColor(Color.Red);
             AddHome(cb);
-            
-            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
-            await _botServices.LogToChannel($"{Context.User.Mention} changed their alias to {modal.NewAlias}").ConfigureAwait(false);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
         }
-        else
+
+        eb.WithTitle("Soul Identity Recalibration");
+        eb.WithDescription("Select the UID you want to assign a soul resonance identifier (alias) to.");
+        eb.WithColor(Color.Blue);
+        await AddUserSelection(spheneDb, cb, "wizard-change-alias-select").ConfigureAwait(false);
+        AddHome(cb);
+        await ModifyInteraction(eb, cb).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction("wizard-change-alias-select")]
+    public async Task ChangeAliasSelect(string uid)
+    {
+        if (!(await ValidateInteraction().ConfigureAwait(false))) return;
+
+        await RespondWithModalAsync<ChangeAliasModal>($"wizard-change-alias-modal:{uid}").ConfigureAwait(false);
+    }
+
+    [ModalInteraction("wizard-change-alias-modal:*")]
+    public async Task ProcessChangeAlias(string uid, ChangeAliasModal modal)
+    {
+        await using var spheneDb = await GetDbContext().ConfigureAwait(false);
+        var primaryAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
+            .SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id && e.StartedAt == null).ConfigureAwait(false);
+
+        EmbedBuilder eb = new();
+        ComponentBuilder cb = new();
+
+        if (primaryAuth == null || primaryAuth.User == null)
         {
-            EmbedBuilder eb = new();
             eb.WithTitle("Soul Resonance Error");
             eb.WithDescription("Unable to update your alias. Please ensure you have a registered account.");
             eb.WithColor(Color.Red);
-            
-            ComponentBuilder cb = new();
             AddHome(cb);
-            
             await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            return;
         }
+
+        var primaryUid = primaryAuth.User.UID;
+        var isOwnedUid = string.Equals(uid, primaryUid, StringComparison.Ordinal)
+                         || await spheneDb.Auth.AnyAsync(a => a.PrimaryUserUID == primaryUid && a.UserUID == uid).ConfigureAwait(false);
+        if (!isOwnedUid)
+        {
+            eb.WithTitle("Unauthorized");
+            eb.WithDescription("This UID is not associated with your Discord account.");
+            eb.WithColor(Color.Red);
+            cb.WithButton("Try Again", "wizard-change-alias", ButtonStyle.Primary, new Emoji("✨"));
+            AddHome(cb);
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var user = await spheneDb.Users.SingleOrDefaultAsync(u => u.UID == uid).ConfigureAwait(false);
+        if (user == null)
+        {
+            eb.WithTitle("Soul Resonance Error");
+            eb.WithDescription("The selected UID does not exist.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var aliasExists = await spheneDb.Users.AnyAsync(u => u.Alias == modal.NewAlias && u.UID != user.UID).ConfigureAwait(false);
+        if (aliasExists)
+        {
+            eb.WithTitle("Soul Identity Conflict");
+            eb.WithDescription($"The soul resonance identifier **{modal.NewAlias}** is already in use by another entity. Please choose a different identifier.");
+            eb.WithColor(Color.Red);
+            cb.WithButton("Try Again", "wizard-change-alias", ButtonStyle.Primary, new Emoji("✨"));
+            AddHome(cb);
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        user.Alias = modal.NewAlias;
+        await spheneDb.SaveChangesAsync().ConfigureAwait(false);
+
+        eb.WithTitle("Soul Identity Recalibrated");
+        eb.WithDescription($"UID **{uid}** has been successfully recalibrated to: **{modal.NewAlias}**" + Environment.NewLine + Environment.NewLine
+                           + "⚠️ **Important:** Please reconnect your Sphene Client once to activate the new identifier.");
+        eb.WithColor(Color.Green);
+        AddHome(cb);
+        await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+        await _botServices.LogToChannel($"{Context.User.Mention} changed alias for {uid} to {modal.NewAlias}").ConfigureAwait(false);
     }
 
     [ComponentInteraction("wizard-home:*")]
@@ -203,7 +243,8 @@ public partial class SpheneWizardModule : InteractionModuleBase
         string currentAlias = null;
         if (hasAccount)
         {
-            var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User).SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id).ConfigureAwait(false);
+            var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
+                .SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id && e.StartedAt == null).ConfigureAwait(false);
             currentAlias = existingAuth?.User?.Alias;
         }
 
@@ -240,6 +281,7 @@ public partial class SpheneWizardModule : InteractionModuleBase
             + (!hasAccount ? string.Empty : ("- Check your soul resonance status press \"ℹ️ User Info\"" + Environment.NewLine))
             + (hasAccount ? string.Empty : ("- Initialize new soul connection press \"⚛ Register\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Recalibrate your soul resonance identifier press \"✨ Soul Identity\"" + Environment.NewLine))
+            + (!hasAccount ? string.Empty : ("- Generate an additional soul fragment (secondary UID) press \"➕ New UID\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Generate a new electrope key press \"🔑 New Key\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Sever soul connections with \"⚠️ Delete\""));
         
@@ -254,6 +296,7 @@ public partial class SpheneWizardModule : InteractionModuleBase
         {
             cb.WithButton("User Info", "wizard-userinfo", ButtonStyle.Secondary, new Emoji("ℹ️"));
             cb.WithButton("Soul Identity", "wizard-change-alias", ButtonStyle.Secondary, new Emoji("✨"));
+            cb.WithButton("New UID", "wizard-newuid", ButtonStyle.Secondary, new Emoji("➕"));
             cb.WithButton("New Key", "wizard-newkey", ButtonStyle.Secondary, new Emoji("🔑"));
             cb.WithButton("Delete", "wizard-delete", ButtonStyle.Danger, new Emoji("⚠️"));
         }
@@ -266,15 +309,14 @@ public partial class SpheneWizardModule : InteractionModuleBase
     {
         if (!(await ValidateInteraction().ConfigureAwait(false))) return;
 
-        using var spheneDb = await GetDbContext().ConfigureAwait(false);
-        var discordId = Context.User.Id;
-        var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
-            .SingleOrDefaultAsync(e => e.DiscordId == discordId).ConfigureAwait(false);
-
         EmbedBuilder eb = new();
         ComponentBuilder cb = new();
 
-        if (existingAuth == null || existingAuth.User == null)
+        await using var spheneDb = await GetDbContext().ConfigureAwait(false);
+        var primaryAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
+            .SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id && e.StartedAt == null).ConfigureAwait(false);
+
+        if (primaryAuth == null || primaryAuth.User == null)
         {
             eb.WithTitle("No account found");
             eb.WithDescription("You do not have a registered account. Please use Register to initialize your soul connection.");
@@ -284,16 +326,75 @@ public partial class SpheneWizardModule : InteractionModuleBase
             return;
         }
 
-        // Remove existing primary auth key if present
-        var primaryAuth = await spheneDb.Auth.Include(a => a.User)
-            .SingleOrDefaultAsync(a => a.UserUID == existingAuth.User.UID && a.PrimaryUserUID == null).ConfigureAwait(false);
-        if (primaryAuth != null)
+        eb.WithTitle("Generate new electrope key");
+        eb.WithDescription("Select the UID you want to generate a new key for.");
+        eb.WithColor(Color.Blue);
+        await AddUserSelection(spheneDb, cb, "wizard-newkey-select").ConfigureAwait(false);
+        AddHome(cb);
+        await ModifyInteraction(eb, cb).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction("wizard-newkey-select")]
+    public async Task RegenerateSecretKeySelect(string uid)
+    {
+        if (!(await ValidateInteraction().ConfigureAwait(false))) return;
+
+        await using var spheneDb = await GetDbContext().ConfigureAwait(false);
+        var primaryAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
+            .SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id && e.StartedAt == null).ConfigureAwait(false);
+
+        EmbedBuilder eb = new();
+        ComponentBuilder cb = new();
+
+        if (primaryAuth == null || primaryAuth.User == null)
         {
-            spheneDb.Auth.Remove(primaryAuth);
+            eb.WithTitle("No account found");
+            eb.WithDescription("You do not have a registered account. Please use Register to initialize your soul connection.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var primaryUid = primaryAuth.User.UID;
+        var isOwnedUid = string.Equals(uid, primaryUid, StringComparison.Ordinal)
+                         || await spheneDb.Auth.AnyAsync(a => a.PrimaryUserUID == primaryUid && a.UserUID == uid).ConfigureAwait(false);
+        if (!isOwnedUid)
+        {
+            eb.WithTitle("Unauthorized");
+            eb.WithDescription("This UID is not associated with your Discord account.");
+            eb.WithColor(Color.Red);
+            await AddUserSelection(spheneDb, cb, "wizard-newkey-select").ConfigureAwait(false);
+            AddHome(cb);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var user = await spheneDb.Users.SingleOrDefaultAsync(u => u.UID == uid).ConfigureAwait(false);
+        if (user == null)
+        {
+            eb.WithTitle("Soul Resonance Error");
+            eb.WithDescription("The selected UID does not exist.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var existingAuthEntries = await spheneDb.Auth.Where(a => a.UserUID == uid).ToListAsync().ConfigureAwait(false);
+        string? inheritedPrimaryUid = null;
+        if (existingAuthEntries.Count > 0)
+        {
+            inheritedPrimaryUid = existingAuthEntries[0].PrimaryUserUID;
+            spheneDb.Auth.RemoveRange(existingAuthEntries);
             await spheneDb.SaveChangesAsync().ConfigureAwait(false);
         }
 
-        // Generate a new key using the same logic as registration
+        if (string.IsNullOrEmpty(inheritedPrimaryUid) && !string.Equals(uid, primaryUid, StringComparison.Ordinal))
+        {
+            inheritedPrimaryUid = primaryUid;
+        }
+
         var originalSecretKeyTime = StringUtils.GenerateRandomString(64) + DateTime.UtcNow.ToString();
         var originalSecretKey = StringUtils.Sha256String(originalSecretKeyTime);
         var clientHashedKey = StringUtils.Sha256String(originalSecretKey);
@@ -302,30 +403,31 @@ public partial class SpheneWizardModule : InteractionModuleBase
         var newAuth = new Auth()
         {
             HashedKey = databaseHashedKey,
-            User = existingAuth.User,
+            User = user,
+            PrimaryUserUID = inheritedPrimaryUid
         };
 
         await spheneDb.Auth.AddAsync(newAuth).ConfigureAwait(false);
         await spheneDb.SaveChangesAsync().ConfigureAwait(false);
 
-        _logger.LogDebug("Regenerated key for user: {userUID}:{hashedKey}", existingAuth.User.UID, databaseHashedKey);
-        await _botServices.LogToChannel($"{Context.User.Mention} NEW KEY GENERATED: => {existingAuth.User.UID}").ConfigureAwait(false);
+        _logger.LogDebug("Regenerated key for uid={uid}:{hashedKey}", uid, databaseHashedKey);
+        await _botServices.LogToChannel($"{Context.User.Mention} NEW KEY GENERATED: => {uid}").ConfigureAwait(false);
 
         eb.WithColor(Color.Green);
-        eb.WithTitle($"New electrope key generated for UID: {existingAuth.User.UID}");
+        eb.WithTitle($"New electrope key generated for UID: {uid}");
         eb.WithDescription("This is your private electrope key. Do not share this electrope key with anyone. **If you lose it, it is irrevocably lost.**"
-                                     + Environment.NewLine + Environment.NewLine
-                                     + "**__NOTE: Electrope keys are considered legacy. Using the suggested OAuth2 authentication in Sphene, you do not need to use this Electrope Key.__**"
-                                     + Environment.NewLine + Environment.NewLine
-                                     + $"||**`{originalSecretKey}`**||"
-                                     + Environment.NewLine + Environment.NewLine
-                                     + "If you want to continue using legacy authentication, enter this key in Sphene Synchronos and hit save to connect to the network."
-                                     + Environment.NewLine
-                                     + "__NOTE: The Electrope Key only contains the letters ABCDEF and numbers 0 - 9.__"
-                                     + Environment.NewLine
-                                     + "You should connect as soon as possible to not get caught by the automatic cleanup process."
-                                     + Environment.NewLine
-                                     + "May your soul resonate with others.");
+                           + Environment.NewLine + Environment.NewLine
+                           + "**__NOTE: Electrope keys are considered legacy. Using the suggested OAuth2 authentication in Sphene, you do not need to use this Electrope Key.__**"
+                           + Environment.NewLine + Environment.NewLine
+                           + $"||**`{originalSecretKey}`**||"
+                           + Environment.NewLine + Environment.NewLine
+                           + "If you want to continue using legacy authentication, enter this key in Sphene Synchronos and hit save to connect to the network."
+                           + Environment.NewLine
+                           + "__NOTE: The Electrope Key only contains the letters ABCDEF and numbers 0 - 9.__"
+                           + Environment.NewLine
+                           + "You should connect as soon as possible to not get caught by the automatic cleanup process."
+                           + Environment.NewLine
+                           + "May your soul resonate with others.");
         AddHome(cb);
         await ModifyInteraction(eb, cb).ConfigureAwait(false);
     }
@@ -382,8 +484,9 @@ public partial class SpheneWizardModule : InteractionModuleBase
     private async Task AddUserSelection(SpheneDbContext spheneDb, ComponentBuilder cb, string customId)
     {
         var discordId = Context.User.Id;
-        var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User).SingleOrDefaultAsync(e => e.DiscordId == discordId).ConfigureAwait(false);
-        if (existingAuth != null)
+        var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
+            .SingleOrDefaultAsync(e => e.DiscordId == discordId && e.StartedAt == null).ConfigureAwait(false);
+        if (existingAuth != null && existingAuth.User != null)
         {
             SelectMenuBuilder sb = new();
             sb.WithPlaceholder("Select a UID");
