@@ -16,6 +16,7 @@ public sealed class CachedFileProvider : IDisposable
     private readonly FileStatisticsService _fileStatisticsService;
     private readonly SpheneMetrics _metrics;
     private readonly ServerTokenGenerator _generator;
+    private readonly R2StorageService _r2Storage;
     private readonly Uri _remoteCacheSourceUri;
     private readonly string _hotStoragePath;
     private readonly ConcurrentDictionary<string, Task> _currentTransfers = new(StringComparer.Ordinal);
@@ -27,13 +28,14 @@ public sealed class CachedFileProvider : IDisposable
     private bool _isDistributionServer;
 
     public CachedFileProvider(IConfigurationService<StaticFilesServerConfiguration> configuration, ILogger<CachedFileProvider> logger,
-        FileStatisticsService fileStatisticsService, SpheneMetrics metrics, ServerTokenGenerator generator)
+        FileStatisticsService fileStatisticsService, SpheneMetrics metrics, ServerTokenGenerator generator, R2StorageService r2Storage)
     {
         _configuration = configuration;
         _logger = logger;
         _fileStatisticsService = fileStatisticsService;
         _metrics = metrics;
         _generator = generator;
+        _r2Storage = r2Storage;
         _remoteCacheSourceUri = configuration.GetValueOrDefault<Uri>(nameof(StaticFilesServerConfiguration.DistributionFileServerAddress), null);
         _isDistributionServer = configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.IsDistributionNode), false);
         _hotStoragePath = configuration.GetValue<string>(nameof(StaticFilesServerConfiguration.CacheDirectory));
@@ -59,6 +61,22 @@ public sealed class CachedFileProvider : IDisposable
 
         // first check cold storage
         if (TryCopyFromColdStorage(hash, destinationFilePath)) return;
+
+        if (IsMainServer && _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.EnableR2ServerRehydrate), true))
+        {
+            var downloadedFromR2 = await _r2Storage.TryDownloadToLocalAsync(hash, destinationFilePath, CancellationToken.None).ConfigureAwait(false);
+            if (downloadedFromR2)
+            {
+                _metrics.IncGauge(MetricsAPI.GaugeFilesTotal);
+                _metrics.IncGauge(MetricsAPI.GaugeFilesTotalSize, FilePathUtil.GetFileInfoForHash(_hotStoragePath, hash).Length);
+                return;
+            }
+        }
+
+        if (_remoteCacheSourceUri == null)
+        {
+            return;
+        }
 
         // if cold storage is not configured or file not found or error is present try to download file from remote
         var downloadUrl = SpheneFiles.DistributionGetFullPath(_remoteCacheSourceUri, hash);
@@ -138,8 +156,10 @@ public sealed class CachedFileProvider : IDisposable
         var fi = FilePathUtil.GetFileInfoForHash(_hotStoragePath, hash);
         if (fi == null && IsMainServer)
         {
-            TryCopyFromColdStorage(hash, FilePathUtil.GetFilePath(_hotStoragePath, hash));
-            return;
+            if (TryCopyFromColdStorage(hash, FilePathUtil.GetFilePath(_hotStoragePath, hash)))
+            {
+                return;
+            }
         }
 
         await _downloadSemaphore.WaitAsync().ConfigureAwait(false);

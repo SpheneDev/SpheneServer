@@ -52,7 +52,8 @@
                    "R2RetainDatabaseEntries":  true,
                    "EnableR2BackfillOnStartup":  false,
                    "R2BackfillMaxFilesPerStartup":  0,
-                   "R2BackfillParallelism":  4
+                   "R2BackfillParallelism":  4,
+                   "EnableR2ServerRehydrate":  true
                },
     "AllowedHosts":  "*",
     "Kestrel":  {
