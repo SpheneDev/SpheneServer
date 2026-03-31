@@ -44,6 +44,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private readonly SpheneCensus _spheneCensus;
     private readonly GPoseLobbyDistributionService _gPoseLobbyDistributionService;
     private readonly Uri _fileServerAddress;
+    private readonly Uri? _fileServerFallbackAddress;
     private readonly Version _expectedClientVersion;
     private readonly Version _minimumClientVersion;
 
@@ -75,6 +76,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         _maxJoinedGroupsByUser = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxJoinedGroupsByUser), 6);
         _maxGroupUserCount = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxGroupUserCount), 100);
         _fileServerAddress = configuration.GetValue<Uri>(nameof(ServerConfiguration.CdnFullUrl));
+        _fileServerFallbackAddress = configuration.GetValueOrDefault<Uri>(nameof(ServerConfiguration.FileServerFallbackAddress), null);
         _expectedClientVersion = configuration.GetValueOrDefault(nameof(ServerConfiguration.ExpectedClientVersion), new Version(0, 0, 0));
         _minimumClientVersion = configuration.GetValueOrDefault(nameof(ServerConfiguration.MinimumClientVersion), new Version(0, 0, 0));
         _maxCharaDataByUser = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUser), 10);
@@ -139,6 +141,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
                 MaxGroupsJoinedByUser = _maxJoinedGroupsByUser,
                 MaxGroupUserCount = _maxGroupUserCount,
                 FileServerAddress = _fileServerAddress,
+                FileServerFallbackAddress = _fileServerFallbackAddress,
                 MaxCharaData = _maxCharaDataByUser,
                 MaxCharaDataVanity = _maxCharaDataByUserVanity,
             },

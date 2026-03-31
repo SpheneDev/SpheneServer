@@ -88,6 +88,7 @@ public class Startup
         services.AddSingleton<RequestFileStreamResultFactory>();
         services.AddSingleton<ServerTokenGenerator>();
         services.AddSingleton<RequestQueueService>();
+        services.AddSingleton<R2StorageService>();
         services.AddHostedService(p => p.GetService<RequestQueueService>());
         services.AddHostedService(m => m.GetService<FileStatisticsService>());
         services.AddSingleton<IConfigurationService<SpheneConfigurationBase>, SpheneConfigurationServiceClient<SpheneConfigurationBase>>();
@@ -98,6 +99,7 @@ public class Startup
         {
             services.AddSingleton<IClientReadyMessageService, MainClientReadyMessageService>();
             services.AddHostedService<MainFileCleanupService>();
+            services.AddHostedService<R2BackfillHostedService>();
             services.AddSingleton<IConfigurationService<StaticFilesServerConfiguration>, SpheneConfigurationServiceServer<StaticFilesServerConfiguration>>();
             services.AddSingleton<MainServerShardRegistrationService>();
             services.AddHostedService(s => s.GetRequiredService<MainServerShardRegistrationService>());

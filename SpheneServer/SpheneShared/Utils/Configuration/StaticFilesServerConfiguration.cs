@@ -24,6 +24,21 @@ public class StaticFilesServerConfiguration : SpheneConfigurationBase
     public double SpeedTestHoursRateLimit { get; set; } = 0.5;
     [RemoteConfiguration]
     public Uri CdnFullUrl { get; set; } = null;
+    [RemoteConfiguration]
+    public Uri FileServerFallbackAddress { get; set; } = null;
+
+    public bool EnableR2Storage { get; set; } = false;
+    public Uri R2Endpoint { get; set; } = null;
+    public string R2BucketName { get; set; } = string.Empty;
+    public string R2AccessKeyId { get; set; } = string.Empty;
+    public string R2SecretAccessKey { get; set; } = string.Empty;
+    [RemoteConfiguration]
+    public Uri R2PublicBaseUrl { get; set; } = null;
+    public string R2KeyPrefix { get; set; } = "files";
+    public bool R2RetainDatabaseEntries { get; set; } = true;
+    public bool EnableR2BackfillOnStartup { get; set; } = false;
+    public int R2BackfillMaxFilesPerStartup { get; set; } = 0;
+    public int R2BackfillParallelism { get; set; } = 4;
     public ShardConfiguration? ShardConfiguration { get; set; } = null;
     public override string ToString()
     {
@@ -40,6 +55,10 @@ public class StaticFilesServerConfiguration : SpheneConfigurationBase
         sb.AppendLine($"{nameof(CacheDirectory)} => {CacheDirectory}");
         sb.AppendLine($"{nameof(DownloadQueueSize)} => {DownloadQueueSize}");
         sb.AppendLine($"{nameof(DownloadQueueReleaseSeconds)} => {DownloadQueueReleaseSeconds}");
+        sb.AppendLine($"{nameof(EnableR2Storage)} => {EnableR2Storage}");
+        sb.AppendLine($"{nameof(EnableR2BackfillOnStartup)} => {EnableR2BackfillOnStartup}");
+        sb.AppendLine($"{nameof(R2BackfillMaxFilesPerStartup)} => {R2BackfillMaxFilesPerStartup}");
+        sb.AppendLine($"{nameof(R2BackfillParallelism)} => {R2BackfillParallelism}");
         return sb.ToString();
     }
 }

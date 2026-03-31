@@ -36,12 +36,13 @@ public class ServerFilesController : ControllerBase
     private readonly IDbContextFactory<SpheneDbContext> _SpheneDbContext;
     private readonly SpheneMetrics _metricsClient;
     private readonly MainServerShardRegistrationService _shardRegistrationService;
+    private readonly R2StorageService _r2Storage;
 
     public ServerFilesController(ILogger<ServerFilesController> logger, CachedFileProvider cachedFileProvider,
         IConfigurationService<StaticFilesServerConfiguration> configuration,
         IHubContext<SpheneHub> hubContext,
         IDbContextFactory<SpheneDbContext> SpheneDbContext, SpheneMetrics metricsClient,
-        MainServerShardRegistrationService shardRegistrationService) : base(logger)
+        MainServerShardRegistrationService shardRegistrationService, R2StorageService r2Storage) : base(logger)
     {
         _basePath = configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.UseColdStorage), false)
             ? configuration.GetValue<string>(nameof(StaticFilesServerConfiguration.ColdStorageDirectory))
@@ -52,6 +53,7 @@ public class ServerFilesController : ControllerBase
         _SpheneDbContext = SpheneDbContext;
         _metricsClient = metricsClient;
         _shardRegistrationService = shardRegistrationService;
+        _r2Storage = r2Storage;
     }
 
     [HttpPost(SpheneFiles.ServerFiles_DeleteAll)]
@@ -93,6 +95,7 @@ public class ServerFilesController : ControllerBase
             .ToListAsync().ConfigureAwait(false);
 
         var allFileShards = _shardRegistrationService.GetConfigurationsByContinent(Continent);
+        var fallbackBaseUrl = _configuration.GetValueOrDefault<Uri>(nameof(StaticFilesServerConfiguration.FileServerFallbackAddress), null);
 
         foreach (var file in cacheFile)
         {
@@ -117,6 +120,8 @@ public class ServerFilesController : ControllerBase
                 Hash = file.Hash,
                 Size = file.Size,
                 Url = baseUrl?.ToString() ?? string.Empty,
+                FallbackUrl = fallbackBaseUrl?.ToString() ?? string.Empty,
+                DirectUrl = _r2Storage.GetPublicObjectUrl(file.Hash)?.ToString() ?? string.Empty,
                 RawSize = file.RawSize
             });
         }
@@ -1216,6 +1221,8 @@ public class ServerFilesController : ControllerBase
         using var fileStream = new FileStream(path, FileMode.Create);
         await compressedFileStream.CopyToAsync(fileStream).ConfigureAwait(false);
         _logger.LogDebug("{user}|{file}: Uploaded file saved to {path}", SpheneUser, hash, path);
+        _r2Storage.EnqueueUploadIfEnabled(hash, path);
+        _logger.LogInformation("{user}|{file}: R2 upload enqueued", SpheneUser, hash);
 
         // update on db
         await dbContext.Files.AddAsync(new FileCache()
