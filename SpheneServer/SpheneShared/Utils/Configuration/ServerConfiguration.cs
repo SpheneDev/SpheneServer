@@ -8,6 +8,9 @@ public class ServerConfiguration : SpheneConfigurationBase
     public Uri CdnFullUrl { get; set; } = null;
 
     [RemoteConfiguration]
+    public Uri FileServerFallbackAddress { get; set; } = null;
+
+    [RemoteConfiguration]
     public Version ExpectedClientVersion { get; set; } = new Version(0, 0, 0);
 
     [RemoteConfiguration]
@@ -41,6 +44,7 @@ public class ServerConfiguration : SpheneConfigurationBase
         StringBuilder sb = new();
         sb.AppendLine(base.ToString());
         sb.AppendLine($"{nameof(CdnFullUrl)} => {CdnFullUrl}");
+        sb.AppendLine($"{nameof(FileServerFallbackAddress)} => {FileServerFallbackAddress}");
         sb.AppendLine($"{nameof(RedisConnectionString)} => {RedisConnectionString}");
         sb.AppendLine($"{nameof(ExpectedClientVersion)} => {ExpectedClientVersion}");
         sb.AppendLine($"{nameof(MaxExistingGroupsByUser)} => {MaxExistingGroupsByUser}");

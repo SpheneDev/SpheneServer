@@ -1,4 +1,4 @@
-﻿{
+{
     "ConnectionStrings":  {
                               "DefaultConnection":  "Host=/var/run/postgresql;Port=5432;Database=sphene;Username=sphene;Password=secretdevpassword;Keepalive=15;Minimum Pool Size=10;Maximum Pool Size=50;No Reset On Close=true;Max Auto Prepare=50;Enlist=false"
                           },
@@ -40,7 +40,19 @@
                    "Jwt":  "teststringteststringteststringteststringteststringteststringteststringteststringteststringteststring",
                    "UseColdStorage":  false,
                    "IsDistributionNode":  true,
-                   "CdnFullUrl":  "http://127.0.0.1:6200/"
+                   "CdnFullUrl":  "http://127.0.0.1:6200/",
+                   "FileServerFallbackAddress":  "",
+                   "EnableR2Storage":  false,
+                   "R2Endpoint":  "",
+                   "R2BucketName":  "sphenefiles-eu",
+                   "R2AccessKeyId":  "",
+                   "R2SecretAccessKey":  "",
+                   "R2PublicBaseUrl":  "",
+                   "R2KeyPrefix":  "files",
+                   "R2RetainDatabaseEntries":  true,
+                   "EnableR2BackfillOnStartup":  false,
+                   "R2BackfillMaxFilesPerStartup":  0,
+                   "R2BackfillParallelism":  4
                },
     "AllowedHosts":  "*",
     "Kestrel":  {

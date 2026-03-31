@@ -103,7 +103,7 @@ public class MainFileCleanupService : IHostedService
     }
 
     private async Task<List<FileInfo>> CleanUpOutdatedFiles(string dir, List<FileInfo> allFilesInDir, int unusedRetention, int forcedDeletionAfterHours,
-        bool deleteFromDb, SpheneDbContext dbContext, CancellationToken ct)
+        bool deleteFromDb, bool retainDbEntries, SpheneDbContext dbContext, CancellationToken ct)
     {
         try
         {
@@ -125,7 +125,7 @@ public class MainFileCleanupService : IHostedService
             }
             else
             {
-                removedFileHashes = await CleanupViaDb(dir, forcedDeletionAfterHours, dbContext, prevTime, prevTimeForcedDeletion, allDbFiles, ct).ConfigureAwait(false);
+                removedFileHashes = await CleanupViaDb(dir, forcedDeletionAfterHours, retainDbEntries, dbContext, prevTime, prevTimeForcedDeletion, allDbFiles, ct).ConfigureAwait(false);
             }
 
             // clean up files that are on disk but not in DB anymore
@@ -154,6 +154,8 @@ public class MainFileCleanupService : IHostedService
         {
             var cleanupCheckMinutes = _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.CleanupCheckInMinutes), 15);
             bool useColdStorage = _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.UseColdStorage), false);
+            bool retainDbEntries = _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.R2RetainDatabaseEntries), true)
+                && _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.EnableR2Storage), false);
             var hotStorageDir = _configuration.GetValue<string>(nameof(StaticFilesServerConfiguration.CacheDirectory));
             var coldStorageDir = _configuration.GetValue<string>(nameof(StaticFilesServerConfiguration.ColdStorageDirectory));
             using var dbContext = await _dbContextFactory.CreateDbContextAsync().ConfigureAwait(false);
@@ -177,12 +179,12 @@ public class MainFileCleanupService : IHostedService
 
                 _logger.LogInformation("File Cleanup Task cleaning up outdated hot storage files");
                 var remainingHotFiles = await CleanUpOutdatedFiles(hotStorageDir, allFilesInHotStorage, unusedRetention, forcedDeletionAfterHours,
-                    deleteFromDb: !useColdStorage, dbContext: dbContext,
+                    deleteFromDb: !useColdStorage, retainDbEntries: retainDbEntries, dbContext: dbContext,
                     ct: linkedToken).ConfigureAwait(false);
 
                 _logger.LogInformation("File Cleanup Task cleaning up hot storage file beyond size limit");
                 var finalRemainingHotFiles = CleanUpFilesBeyondSizeLimit(remainingHotFiles, sizeLimit,
-                    deleteFromDb: !useColdStorage, dbContext: dbContext,
+                    deleteFromDb: !useColdStorage && !retainDbEntries, dbContext: dbContext,
                     ct: linkedToken);
 
                 if (useColdStorage)
@@ -197,11 +199,11 @@ public class MainFileCleanupService : IHostedService
                     // clean up cold storage
                     _logger.LogInformation("File Cleanup Task cleaning up outdated cold storage files");
                     var remainingColdFiles = await CleanUpOutdatedFiles(coldStorageDir, allFilesInColdStorageDir, coldStorageRetention, forcedDeletionAfterHours: -1,
-                        deleteFromDb: true, dbContext: dbContext,
+                        deleteFromDb: true, retainDbEntries: retainDbEntries, dbContext: dbContext,
                         ct: linkedToken).ConfigureAwait(false);
                     _logger.LogInformation("File Cleanup Task cleaning up cold storage file beyond size limit");
                     var finalRemainingColdFiles = CleanUpFilesBeyondSizeLimit(remainingColdFiles, coldStorageSize,
-                        deleteFromDb: true, dbContext: dbContext,
+                        deleteFromDb: !retainDbEntries, dbContext: dbContext,
                         ct: linkedToken);
                 }
             }
@@ -240,7 +242,7 @@ public class MainFileCleanupService : IHostedService
             await Task.Delay(span, ct).ConfigureAwait(false);
         }
     }
-    private async Task<List<string>> CleanupViaDb(string dir, int forcedDeletionAfterHours,
+    private async Task<List<string>> CleanupViaDb(string dir, int forcedDeletionAfterHours, bool retainDbEntries,
         SpheneDbContext dbContext, DateTime lastAccessCutoffTime, DateTime forcedDeletionCutoffTime, List<FileCache> allDbFiles, CancellationToken ct)
     {
         int fileCounter = 0;
@@ -288,8 +290,10 @@ public class MainFileCleanupService : IHostedService
                 if (file != null) file.Delete();
 
                 removedFileHashes.Add(fileCache.Hash);
-
-                dbContext.Files.Remove(fileCache);
+                if (!retainDbEntries)
+                {
+                    dbContext.Files.Remove(fileCache);
+                }
             }
 
             // only used if file in db has no size for whatever reason
