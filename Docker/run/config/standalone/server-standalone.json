@@ -32,7 +32,7 @@
                    "MetricsPort":  6050,
                    "MainServerAddress":  "",
                    "FailedAuthForTempBan":  5,
-                   "TempBanDurationInMinutes":  5,
+                   "TempBanDurationInMinutes":  0,
                    "Jwt":  "teststringteststringteststringteststringteststringteststringteststringteststringteststringteststring",
                    "WhitelistedIps":  [
                                           ""

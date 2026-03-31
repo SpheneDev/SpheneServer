@@ -36,6 +36,7 @@ public class StaticFilesServerConfiguration : SpheneConfigurationBase
     public Uri R2PublicBaseUrl { get; set; } = null;
     public string R2KeyPrefix { get; set; } = "files";
     public bool R2RetainDatabaseEntries { get; set; } = true;
+    public bool EnableR2ServerRehydrate { get; set; } = true;
     public bool EnableR2BackfillOnStartup { get; set; } = false;
     public int R2BackfillMaxFilesPerStartup { get; set; } = 0;
     public int R2BackfillParallelism { get; set; } = 4;

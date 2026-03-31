@@ -196,45 +196,30 @@ public class ServerFilesController : ControllerBase
         {
             try
             {
-                bool isColdStorage = _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.UseColdStorage), false);
-
-                var affectedFiles = await dbContext.Files
-                    .Where(f => unavailableHashes.Contains(f.Hash) && f.Uploaded)
-                    .ToListAsync(HttpContext.RequestAborted)
-                    .ConfigureAwait(false);
-
-                foreach (var dbFile in affectedFiles)
-                {
-                    if (dbFile.Size > 0)
-                    {
-                        _metricsClient.DecGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalColdStorage : MetricsAPI.GaugeFilesTotal, 1);
-                        _metricsClient.DecGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalSizeColdStorage : MetricsAPI.GaugeFilesTotalSize, dbFile.Size);
-                    }
-
-                    dbFile.Uploaded = false;
-                    dbFile.Size = 0;
-                    dbFile.RawSize = 0;
-                }
-
-                var staleTransfers = await dbContext.PendingFileTransfers
-                    .Where(p => unavailableHashes.Contains(p.Hash))
-                    .ToListAsync(HttpContext.RequestAborted)
-                    .ConfigureAwait(false);
-
-                if (staleTransfers.Count > 0)
-                {
-                    dbContext.PendingFileTransfers.RemoveRange(staleTransfers);
-                }
-
-                if (affectedFiles.Count > 0 || staleTransfers.Count > 0)
-                {
-                    await dbContext.SaveChangesAsync(HttpContext.RequestAborted).ConfigureAwait(false);
-                }
+                await Task.WhenAll(unavailableHashes.Select(h => _cachedFileProvider.DownloadAndGetLocalFileInfo(h))).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "{user}|FilesSend: Failed to clean up unavailable hashes", SpheneUser);
+                _logger.LogWarning(ex, "{user}|FilesSend: Failed to rehydrate some missing local files before deciding on re-upload", SpheneUser);
             }
+
+            var stillUnavailable = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var hash in unavailableHashes)
+            {
+                if (!existingFiles.TryGetValue(hash, out var dbFile) || !dbFile.Uploaded || dbFile.Size <= 0)
+                {
+                    stillUnavailable.Add(hash);
+                    continue;
+                }
+
+                var local = _cachedFileProvider.GetLocalFilePath(hash);
+                if (local == null || !local.Exists || local.Length != dbFile.Size)
+                {
+                    stillUnavailable.Add(hash);
+                }
+            }
+
+            unavailableHashes = stillUnavailable;
         }
 
         if (filesSendDto.ModInfo != null && filesSendDto.ModInfo.Any())
@@ -1100,16 +1085,27 @@ public class ServerFilesController : ControllerBase
 
         hash = hash.ToUpperInvariant();
         var existingFile = await dbContext.Files.SingleOrDefaultAsync(f => f.Hash == hash);
-        if (existingFile != null) return Ok();
+        if (existingFile != null && existingFile.Uploaded && existingFile.Size > 0)
+        {
+            var local = FilePathUtil.GetFileInfoForHash(_basePath, hash);
+            if (local != null && local.Exists && local.Length == existingFile.Size)
+            {
+                return Ok();
+            }
+        }
 
         SemaphoreSlim fileLock = await CreateFileLock(hash, requestAborted).ConfigureAwait(false);
 
         try
         {
             var existingFileCheck2 = await dbContext.Files.SingleOrDefaultAsync(f => f.Hash == hash);
-            if (existingFileCheck2 != null)
+            if (existingFileCheck2 != null && existingFileCheck2.Uploaded && existingFileCheck2.Size > 0)
             {
-                return Ok();
+                var local = FilePathUtil.GetFileInfoForHash(_basePath, hash);
+                if (local != null && local.Exists && local.Length == existingFileCheck2.Size)
+                {
+                    return Ok();
+                }
             }
 
             // copy the request body to memory
@@ -1155,16 +1151,27 @@ public class ServerFilesController : ControllerBase
         _logger.LogInformation("{user}|{file}: Uploading munged", SpheneUser, hash);
         hash = hash.ToUpperInvariant();
         var existingFile = await dbContext.Files.SingleOrDefaultAsync(f => f.Hash == hash);
-        if (existingFile != null) return Ok();
+        if (existingFile != null && existingFile.Uploaded && existingFile.Size > 0)
+        {
+            var local = FilePathUtil.GetFileInfoForHash(_basePath, hash);
+            if (local != null && local.Exists && local.Length == existingFile.Size)
+            {
+                return Ok();
+            }
+        }
 
         SemaphoreSlim fileLock = await CreateFileLock(hash, requestAborted).ConfigureAwait(false);
 
         try
         {
             var existingFileCheck2 = await dbContext.Files.SingleOrDefaultAsync(f => f.Hash == hash);
-            if (existingFileCheck2 != null)
+            if (existingFileCheck2 != null && existingFileCheck2.Uploaded && existingFileCheck2.Size > 0)
             {
-                return Ok();
+                var local = FilePathUtil.GetFileInfoForHash(_basePath, hash);
+                if (local != null && local.Exists && local.Length == existingFileCheck2.Size)
+                {
+                    return Ok();
+                }
             }
 
             // copy the request body to memory
@@ -1218,31 +1225,42 @@ public class ServerFilesController : ControllerBase
 
         // save file
         var path = FilePathUtil.GetFilePath(_basePath, hash);
+        var existedOnDisk = System.IO.File.Exists(path);
         using var fileStream = new FileStream(path, FileMode.Create);
         await compressedFileStream.CopyToAsync(fileStream).ConfigureAwait(false);
         _logger.LogDebug("{user}|{file}: Uploaded file saved to {path}", SpheneUser, hash, path);
-        _r2Storage.EnqueueUploadIfEnabled(hash, path);
-        _logger.LogInformation("{user}|{file}: R2 upload enqueued", SpheneUser, hash);
 
         // update on db
-        await dbContext.Files.AddAsync(new FileCache()
+        var existing = await dbContext.Files.FindAsync(hash).ConfigureAwait(false);
+        var existedBefore = existing != null;
+        if (existing == null)
         {
-            Hash = hash,
-            UploadDate = DateTime.UtcNow,
-            UploaderUID = SpheneUser,
-            Size = compressedFileStream.Length,
-            Uploaded = true,
-            RawSize = decompressedData.LongLength
-        }).ConfigureAwait(false);
+            existing = new FileCache { Hash = hash };
+            await dbContext.Files.AddAsync(existing).ConfigureAwait(false);
+        }
+
+        existing.UploadDate = DateTime.UtcNow;
+        existing.UploaderUID = SpheneUser;
+        existing.Size = compressedFileStream.Length;
+        existing.Uploaded = true;
+        existing.RawSize = decompressedData.LongLength;
 
         await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         _logger.LogDebug("{user}|{file}: Uploaded file saved to DB", SpheneUser, hash);
+        if (!existedBefore)
+        {
+            _r2Storage.EnqueueUploadIfEnabled(hash, path);
+            _logger.LogInformation("{user}|{file}: R2 upload enqueued", SpheneUser, hash);
+        }
 
         bool isColdStorage = _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.UseColdStorage), false);
 
-        _metricsClient.IncGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalColdStorage : MetricsAPI.GaugeFilesTotal, 1);
-        _metricsClient.IncGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalSizeColdStorage : MetricsAPI.GaugeFilesTotalSize, compressedFileStream.Length);
+        if (!existedOnDisk)
+        {
+            _metricsClient.IncGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalColdStorage : MetricsAPI.GaugeFilesTotal, 1);
+            _metricsClient.IncGauge(isColdStorage ? MetricsAPI.GaugeFilesTotalSizeColdStorage : MetricsAPI.GaugeFilesTotalSize, compressedFileStream.Length);
+        }
     }
 
 
