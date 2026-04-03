@@ -24,8 +24,10 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
 {
     private static readonly ConcurrentDictionary<string, string> _userConnections = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, string> _userClientVersions = new(StringComparer.Ordinal);
-    // Map hash keys to sender UIDs for acknowledgment lookup (legacy - will be replaced by batch tracker)
-    private static readonly ConcurrentDictionary<string, string> _acknowledgmentSenders = new(StringComparer.Ordinal);
+    private sealed record LegacyAckSender(string SenderUid, DateTime CreatedAtUtc);
+    private static readonly ConcurrentDictionary<string, LegacyAckSender> _acknowledgmentSenders = new(StringComparer.Ordinal);
+    private static readonly TimeSpan _legacyAckSenderTtl = TimeSpan.FromMinutes(15);
+    private static readonly Timer _legacyAckCleanupTimer = new(_ => PruneLegacyAckSenders(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     // New batch acknowledgment tracker for proper session-based acknowledgments
     private static readonly BatchAcknowledgmentTracker _batchAcknowledgmentTracker = new();
     private static readonly ConcurrentDictionary<string, DateTime> _recentSessionAcknowledgments = new(StringComparer.Ordinal);
@@ -88,6 +90,18 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         _gPoseLobbyDistributionService = gPoseLobbyDistributionService;
         _logger = new SpheneHubLogger(this, logger);
         _dbContextLazy = new Lazy<SpheneDbContext>(() => spheneDbContextFactory.CreateDbContext());
+    }
+
+    private static void PruneLegacyAckSenders()
+    {
+        var cutoff = DateTime.UtcNow - _legacyAckSenderTtl;
+        foreach (var kvp in _acknowledgmentSenders)
+        {
+            if (kvp.Value.CreatedAtUtc < cutoff)
+            {
+                _acknowledgmentSenders.TryRemove(kvp.Key, out _);
+            }
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -347,12 +361,13 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     // Cleanup acknowledgment mappings for a specific user
     private static void CleanupAcknowledgmentMappingsForUser(string userUid)
     {
+        PruneLegacyAckSenders();
         // Clean up legacy acknowledgment mappings for this user
         var keysToRemove = new List<string>();
         
         foreach (var kvp in _acknowledgmentSenders)
         {
-            if (kvp.Value == userUid)
+            if (kvp.Value.SenderUid == userUid)
             {
                 keysToRemove.Add(kvp.Key);
             }

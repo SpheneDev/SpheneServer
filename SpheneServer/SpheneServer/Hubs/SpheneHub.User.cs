@@ -397,7 +397,7 @@ public partial class SpheneHub
         var sessionId = _batchAcknowledgmentTracker.CreateSession(dataHash, UserUID, recipientUids);
         
         // Keep legacy mapping for backward compatibility (will be removed later)
-        _acknowledgmentSenders.AddOrUpdate(dataHash, UserUID, (key, oldValue) => UserUID);
+        _acknowledgmentSenders.AddOrUpdate(dataHash, new LegacyAckSender(UserUID, DateTime.UtcNow), (key, oldValue) => new LegacyAckSender(UserUID, DateTime.UtcNow));
         
         // Log session-based acknowledgment info
         _logger.LogCallInfo(SpheneHubLogger.Args("Hash:", ShortLogToken(dataHash), "SessionId:", ShortLogToken(sessionId), "Recipients:", recipientUids.Count));
@@ -524,7 +524,7 @@ public partial class SpheneHub
             }
         }
         // Handle legacy hash-based acknowledgments for backward compatibility
-        else if (_acknowledgmentSenders.TryGetValue(normalizedHash, out var originalSenderUid))
+        else if (_acknowledgmentSenders.TryGetValue(normalizedHash, out var legacySender))
         {
             // Clean up the acknowledgment mapping FIRST to prevent duplicate processing
             var removed = _acknowledgmentSenders.TryRemove(normalizedHash, out _);
@@ -532,10 +532,11 @@ public partial class SpheneHub
             if (!removed)
             {
                 _logger.LogCallWarning(SpheneHubLogger.Args("Acknowledgment already processed - User:", UserUID, "Hash:", ShortLogToken(normalizedHash)));
-                LogAcknowledgmentStat(false, "legacy", "already_processed", normalizedHash, string.Empty, acknowledgmentDto.Success, originalSenderUid);
+                LogAcknowledgmentStat(false, "legacy", "already_processed", normalizedHash, string.Empty, acknowledgmentDto.Success, legacySender.SenderUid);
                 return;
             }
             
+            var originalSenderUid = legacySender.SenderUid;
             // Validate that the acknowledging user has a pair relationship with the original sender
             var pairExists = await DbContext.ClientPairs.AsNoTracking()
                 .AnyAsync(p => (p.UserUID == UserUID && p.OtherUserUID == originalSenderUid) ||
