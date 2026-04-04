@@ -393,19 +393,24 @@ public partial class SpheneHub
         var dataHash = dto.CharaData.DataHash.Value;
         await StoreNewHash(UserUID, dataHash).ConfigureAwait(false);
         
-        // Create batch acknowledgment session for tracking individual recipients
-        var sessionId = _batchAcknowledgmentTracker.CreateSession(dataHash, UserUID, recipientUids);
-        
-        // Keep legacy mapping for backward compatibility (will be removed later)
-        _acknowledgmentSenders.AddOrUpdate(dataHash, new LegacyAckSender(UserUID, DateTime.UtcNow), (key, oldValue) => new LegacyAckSender(UserUID, DateTime.UtcNow));
-        
-        // Log session-based acknowledgment info
-        _logger.LogCallInfo(SpheneHubLogger.Args("Hash:", ShortLogToken(dataHash), "SessionId:", ShortLogToken(sessionId), "Recipients:", recipientUids.Count));
+        var requiresAck = dto.RequiresAcknowledgment;
+        string? sessionId = null;
+        if (requiresAck)
+        {
+            // Create batch acknowledgment session for tracking individual recipients
+            sessionId = _batchAcknowledgmentTracker.CreateSession(dataHash, UserUID, recipientUids);
+            
+            // Keep legacy mapping for backward compatibility (will be removed later)
+            _acknowledgmentSenders.AddOrUpdate(dataHash, new LegacyAckSender(UserUID, DateTime.UtcNow), (key, oldValue) => new LegacyAckSender(UserUID, DateTime.UtcNow));
+            
+            // Log session-based acknowledgment info
+            _logger.LogCallInfo(SpheneHubLogger.Args("Hash:", ShortLogToken(dataHash), "SessionId:", ShortLogToken(sessionId), "Recipients:", recipientUids.Count));
+        }
         
         var characterDataDto = new OnlineUserCharaDataDto(new UserData(UserUID), dto.CharaData)
         {
             DataHash = dataHash,
-            RequiresAcknowledgment = true,
+            RequiresAcknowledgment = requiresAck,
             SessionId = sessionId
         };
 
