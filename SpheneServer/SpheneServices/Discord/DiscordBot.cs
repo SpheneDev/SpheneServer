@@ -569,6 +569,7 @@ internal class DiscordBot : IHostedService
             return;
         }
 
+        var canonicalVersion = NormalizeChangelogVersion(expectedVersion);
         var buildAvailable = await IsUrlAvailableAsync(expectedDownloadUrl, token).ConfigureAwait(false);
         if (!buildAvailable)
         {
@@ -582,22 +583,23 @@ internal class DiscordBot : IHostedService
         }
 
         var db = _connectionMultiplexer.GetDatabase();
-        var expectedEmbedTitle = $"{(expectedIsPrerelease ? "Sphene Testbuild" : "Sphene Release")} {expectedVersion}";
-        var expectedFooterPrefix = BuildChangelogFooterPrefix(expectedVersion, expectedIsPrerelease);
-        var (embed, fingerprint) = BuildChangelogEmbedWithFingerprint(entry, expectedVersion, expectedIsPrerelease);
+        var expectedEmbedTitle = $"{(expectedIsPrerelease ? "Sphene Testbuild" : "Sphene Release")} {canonicalVersion}";
+        var expectedFooterPrefix = BuildChangelogFooterPrefix(canonicalVersion, expectedIsPrerelease);
+        var (embed, fingerprint) = BuildChangelogEmbedWithFingerprint(entry, canonicalVersion, expectedIsPrerelease);
 
         var lastPosted = await db.StringGetAsync(lastPostedRedisKey).ConfigureAwait(false);
         var lastPostedMessageIdRaw = await db.StringGetAsync(lastPostedMessageIdRedisKey).ConfigureAwait(false);
 
         // 1. Fast Path: Check if we have a valid known message ID in Redis
-        if (!lastPosted.IsNullOrEmpty && string.Equals(lastPosted.ToString(), expectedVersion, StringComparison.OrdinalIgnoreCase))
+        if (!lastPosted.IsNullOrEmpty && string.Equals(NormalizeChangelogVersion(lastPosted.ToString()), canonicalVersion, StringComparison.OrdinalIgnoreCase))
         {
             if (!lastPostedMessageIdRaw.IsNullOrEmpty && ulong.TryParse(lastPostedMessageIdRaw.ToString(), out var msgId))
             {
                 var message = await channel.GetMessageAsync(msgId).ConfigureAwait(false) as IUserMessage;
                 if (message != null)
                 {
-                    var existingEmbed = message.Embeds.FirstOrDefault(e => FooterMatches(e.Footer?.Text, expectedFooterPrefix))
+                    var existingEmbed = FindEmbedForChangelogIdentity(message.Embeds, canonicalVersion, expectedIsPrerelease)
+                                       ?? message.Embeds.FirstOrDefault(e => FooterMatches(e.Footer?.Text, expectedFooterPrefix))
                                        ?? message.Embeds.FirstOrDefault(e => string.Equals(e.Title, expectedEmbedTitle, StringComparison.OrdinalIgnoreCase));
                     var existingFingerprint = TryExtractChangelogFingerprint(existingEmbed?.Footer?.Text);
 
@@ -619,7 +621,7 @@ internal class DiscordBot : IHostedService
         // - Redis was empty (lost state)
         // - OR Redis had state but the message was deleted or not found
         // - OR we just want to be sure before posting a duplicate
-        var found = await TryFindChangelogMessageAsync(channel, expectedFooterPrefix, expectedEmbedTitle, token).ConfigureAwait(false);
+        var found = await TryFindChangelogMessageAsync(channel, canonicalVersion, expectedIsPrerelease, token).ConfigureAwait(false);
         if (found != null)
         {
             var (existingMessage, existingFingerprint) = found.Value;
@@ -628,14 +630,14 @@ internal class DiscordBot : IHostedService
                 await existingMessage.ModifyAsync(p => p.Embed = embed).ConfigureAwait(false);
             }
 
-            await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
+            await db.StringSetAsync(lastPostedRedisKey, canonicalVersion).ConfigureAwait(false);
             await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
             await db.StringSetAsync(lastPostedMessageIdRedisKey, existingMessage.Id.ToString()).ConfigureAwait(false);
             return;
         }
 
         var posted = await channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
-        await db.StringSetAsync(lastPostedRedisKey, expectedVersion).ConfigureAwait(false);
+        await db.StringSetAsync(lastPostedRedisKey, canonicalVersion).ConfigureAwait(false);
         await db.StringSetAsync(lastPostedHashRedisKey, fingerprint).ConfigureAwait(false);
         await db.StringSetAsync(lastPostedMessageIdRedisKey, posted.Id.ToString()).ConfigureAwait(false);
     }
@@ -718,9 +720,10 @@ internal class DiscordBot : IHostedService
         return updatedCount;
     }
 
-    private async Task<(IUserMessage Message, string? Fingerprint)?> TryFindChangelogMessageAsync(IMessageChannel channel, string expectedFooterPrefix, string expectedEmbedTitle, CancellationToken token)
+    private async Task<(IUserMessage Message, string? Fingerprint)?> TryFindChangelogMessageAsync(IMessageChannel channel, string expectedVersion, bool expectedIsPrerelease, CancellationToken token)
     {
         var botUserId = _discordClient.CurrentUser?.Id;
+        var canonicalExpectedVersion = NormalizeChangelogVersion(expectedVersion);
         try
         {
             var messages = await channel.GetMessagesAsync(100).FlattenAsync().ConfigureAwait(false);
@@ -735,8 +738,7 @@ internal class DiscordBot : IHostedService
 
                 foreach (var embed in message.Embeds)
                 {
-                    if (FooterMatches(embed.Footer?.Text, expectedFooterPrefix) ||
-                        string.Equals(embed.Title, expectedEmbedTitle, StringComparison.OrdinalIgnoreCase))
+                    if (EmbedMatchesChangelogIdentity(embed, canonicalExpectedVersion, expectedIsPrerelease))
                     {
                         if (message is IUserMessage userMessage)
                         {
@@ -756,6 +758,37 @@ internal class DiscordBot : IHostedService
         }
 
         return null;
+    }
+
+    private static IEmbed? FindEmbedForChangelogIdentity(IEnumerable<IEmbed> embeds, string expectedVersion, bool expectedIsPrerelease)
+    {
+        var canonicalExpected = NormalizeChangelogVersion(expectedVersion);
+        foreach (var embed in embeds)
+        {
+            if (EmbedMatchesChangelogIdentity(embed, canonicalExpected, expectedIsPrerelease))
+            {
+                return embed;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool EmbedMatchesChangelogIdentity(IEmbed embed, string expectedVersion, bool expectedIsPrerelease)
+    {
+        if (TryExtractIdentityFromFooter(embed.Footer?.Text, out var footerVersion, out var footerIsPrerelease))
+        {
+            return footerIsPrerelease == expectedIsPrerelease
+                && string.Equals(NormalizeChangelogVersion(footerVersion), expectedVersion, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (TryExtractIdentityFromTitle(embed.Title, out var titleVersion, out var titleIsPrerelease))
+        {
+            return titleIsPrerelease == expectedIsPrerelease
+                && string.Equals(NormalizeChangelogVersion(titleVersion), expectedVersion, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     private static bool TryExtractChangelogIdentity(IEnumerable<IEmbed> embeds, bool expectedIsPrerelease, out string version, out string? fingerprint)
@@ -809,7 +842,7 @@ internal class DiscordBot : IHostedService
         const string testPrefix = "changelog testbuild ";
         if (trimmed.StartsWith(testPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            version = trimmed[testPrefix.Length..].Trim();
+            version = NormalizeChangelogVersion(trimmed[testPrefix.Length..].Trim());
             isPrerelease = true;
             return !string.IsNullOrWhiteSpace(version);
         }
@@ -817,7 +850,7 @@ internal class DiscordBot : IHostedService
         const string releasePrefix = "changelog release ";
         if (trimmed.StartsWith(releasePrefix, StringComparison.OrdinalIgnoreCase))
         {
-            version = trimmed[releasePrefix.Length..].Trim();
+            version = NormalizeChangelogVersion(trimmed[releasePrefix.Length..].Trim());
             isPrerelease = false;
             return !string.IsNullOrWhiteSpace(version);
         }
@@ -838,7 +871,7 @@ internal class DiscordBot : IHostedService
         const string testPrefix = "Sphene Testbuild ";
         if (trimmed.StartsWith(testPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            version = trimmed[testPrefix.Length..].Trim();
+            version = NormalizeChangelogVersion(trimmed[testPrefix.Length..].Trim());
             isPrerelease = true;
             return !string.IsNullOrWhiteSpace(version);
         }
@@ -846,7 +879,7 @@ internal class DiscordBot : IHostedService
         const string releasePrefix = "Sphene Release ";
         if (trimmed.StartsWith(releasePrefix, StringComparison.OrdinalIgnoreCase))
         {
-            version = trimmed[releasePrefix.Length..].Trim();
+            version = NormalizeChangelogVersion(trimmed[releasePrefix.Length..].Trim());
             isPrerelease = false;
             return !string.IsNullOrWhiteSpace(version);
         }
@@ -1404,6 +1437,7 @@ internal class DiscordBot : IHostedService
     private static bool TryFindChangelogEntry(JsonDocument changelogJson, string expectedVersion, bool expectedIsPrerelease, out JsonElement entry)
     {
         entry = default;
+        var canonicalExpectedVersion = NormalizeChangelogVersion(expectedVersion);
 
         var root = changelogJson.RootElement;
         if (!root.TryGetProperty("changelogs", out var changelogs) || changelogs.ValueKind != JsonValueKind.Array)
@@ -1422,7 +1456,7 @@ internal class DiscordBot : IHostedService
                 ? vProp.GetString() ?? string.Empty
                 : string.Empty;
 
-            if (!string.Equals(version, expectedVersion, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(NormalizeChangelogVersion(version), canonicalExpectedVersion, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -1438,6 +1472,59 @@ internal class DiscordBot : IHostedService
         }
 
         return false;
+    }
+
+    private static string NormalizeChangelogVersion(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        if (!TryParseNormalizedVersion(raw, out var v))
+        {
+            return raw.Trim();
+        }
+
+        return FormatVersionForDiscord(v);
+    }
+
+    private static bool TryParseNormalizedVersion(string raw, out Version version)
+    {
+        version = new Version(0, 0, 0, 0);
+        var core = raw.Trim();
+        var dashIndex = core.IndexOf('-', StringComparison.Ordinal);
+        if (dashIndex >= 0)
+        {
+            core = core[..dashIndex].Trim();
+        }
+
+        if (core.StartsWith("v", StringComparison.OrdinalIgnoreCase))
+        {
+            core = core[1..].Trim();
+        }
+
+        if (!Version.TryParse(core, out var parsed))
+        {
+            return false;
+        }
+
+        var major = parsed.Major < 0 ? 0 : parsed.Major;
+        var minor = parsed.Minor < 0 ? 0 : parsed.Minor;
+        var build = parsed.Build < 0 ? 0 : parsed.Build;
+        var revision = parsed.Revision < 0 ? 0 : parsed.Revision;
+        version = new Version(major, minor, build, revision);
+        return true;
+    }
+
+    private static string FormatVersionForDiscord(Version v)
+    {
+        if (v.Revision != 0)
+        {
+            return $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+        }
+
+        return $"{v.Major}.{v.Minor}.{v.Build}";
     }
 
     private async Task<bool> IsUrlAvailableAsync(string url, CancellationToken token)
