@@ -82,47 +82,80 @@ public class ServerFilesController : ControllerBase
     }
 
     [HttpGet(SpheneFiles.ServerFiles_GetSizes)]
-    public async Task<IActionResult> FilesGetSizes([FromBody] List<string> hashes)
-    {
-        using var dbContext = await _SpheneDbContext.CreateDbContextAsync();
-        var forbiddenFiles = await dbContext.ForbiddenUploadEntries.
-            Where(f => hashes.Contains(f.Hash)).ToListAsync().ConfigureAwait(false);
-        List<DownloadFileDto> response = new();
+    public Task<IActionResult> FilesGetSizes([FromBody] List<string> hashes)
+        => FilesGetSizesInternal(hashes);
 
-        var cacheFile = await dbContext.Files.AsNoTracking()
-            .Where(f => hashes.Contains(f.Hash))
-            .Select(k => new { k.Hash, k.Size, k.RawSize })
-            .ToListAsync().ConfigureAwait(false);
+    [HttpPost(SpheneFiles.ServerFiles_GetSizes)]
+    public Task<IActionResult> FilesGetSizesPost([FromBody] List<string> hashes)
+        => FilesGetSizesInternal(hashes);
+
+    private async Task<IActionResult> FilesGetSizesInternal(List<string> hashes)
+    {
+        var normalizedHashes = (hashes ?? [])
+            .Select(NormalizeHashForLookup)
+            .Where(h => !string.IsNullOrEmpty(h))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedHashes.Count == 0)
+        {
+            _logger.LogWarning("{user}|FilesGetSizes: empty hash list (method={method} contentLength={len})", SpheneUser, Request.Method, Request.ContentLength ?? 0);
+            return Ok("[]");
+        }
+
+        using var dbContext = await _SpheneDbContext.CreateDbContextAsync();
+        var forbiddenFiles = await dbContext.ForbiddenUploadEntries.AsNoTracking()
+            .Where(f => normalizedHashes.Contains(f.Hash))
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        var dbFiles = await dbContext.Files.AsNoTracking()
+            .Where(f => normalizedHashes.Contains(f.Hash))
+            .Select(k => new { k.Hash, k.Size, k.RawSize, k.Uploaded })
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        var dbFilesByHash = dbFiles.ToDictionary(f => f.Hash, f => f, StringComparer.OrdinalIgnoreCase);
+        var forbiddenByHash = forbiddenFiles.ToDictionary(f => f.Hash, f => f, StringComparer.OrdinalIgnoreCase);
 
         var allFileShards = _shardRegistrationService.GetConfigurationsByContinent(Continent);
         var fallbackBaseUrl = _configuration.GetValueOrDefault<Uri>(nameof(StaticFilesServerConfiguration.FileServerFallbackAddress), null);
 
-        foreach (var file in cacheFile)
+        var missingInDb = normalizedHashes.Count - dbFilesByHash.Count;
+        var forbiddenCount = forbiddenByHash.Count;
+        var notUploadedCount = dbFiles.Count(f => !f.Uploaded || f.Size <= 0);
+        if (missingInDb > 0 || notUploadedCount > 0)
         {
-            var forbiddenFile = forbiddenFiles.SingleOrDefault(f => string.Equals(f.Hash, file.Hash, StringComparison.OrdinalIgnoreCase));
-            Uri? baseUrl = null;
+            _logger.LogWarning("{user}|FilesGetSizes: requested={requested} dbFound={dbFound} missingInDb={missingInDb} forbidden={forbidden} notUploadedOrZero={notUploaded} method={method}",
+                SpheneUser, normalizedHashes.Count, dbFilesByHash.Count, missingInDb, forbiddenCount, notUploadedCount, Request.Method);
+        }
 
-            if (forbiddenFile == null)
+        List<DownloadFileDto> response = new(normalizedHashes.Count);
+        foreach (var hash in normalizedHashes)
+        {
+            forbiddenByHash.TryGetValue(hash, out var forbiddenFile);
+            dbFilesByHash.TryGetValue(hash, out var file);
+
+            Uri baseUrl = null;
+            if (forbiddenFile == null && file is { Uploaded: true } && file.Size > 0)
             {
-                var matchingShards = allFileShards.Where(f => new Regex(f.FileMatch).IsMatch(file.Hash)).ToList();
-
+                var matchingShards = allFileShards.Where(f => new Regex(f.FileMatch).IsMatch(hash)).ToList();
                 var shard = matchingShards.SelectMany(g => g.RegionUris)
                     .OrderBy(g => Guid.NewGuid()).FirstOrDefault();
-
                 baseUrl = shard.Value ?? _configuration.GetValue<Uri>(nameof(StaticFilesServerConfiguration.CdnFullUrl));
             }
 
             response.Add(new DownloadFileDto
             {
-                FileExists = file.Size > 0,
+                FileExists = file is { Uploaded: true } && file.Size > 0 && forbiddenFile == null,
                 ForbiddenBy = forbiddenFile?.ForbiddenBy ?? string.Empty,
                 IsForbidden = forbiddenFile != null,
-                Hash = file.Hash,
-                Size = file.Size,
+                Hash = hash,
+                Size = file?.Size ?? 0,
                 Url = baseUrl?.ToString() ?? string.Empty,
                 FallbackUrl = fallbackBaseUrl?.ToString() ?? string.Empty,
-                DirectUrl = _r2Storage.GetPublicObjectUrl(file.Hash)?.ToString() ?? string.Empty,
-                RawSize = file.RawSize
+                DirectUrl = file != null ? (_r2Storage.GetPublicObjectUrl(hash)?.ToString() ?? string.Empty) : string.Empty,
+                RawSize = file?.RawSize ?? 0
             });
         }
 
