@@ -477,19 +477,6 @@ public partial class SpheneHub
         {
             if (_batchAcknowledgmentTracker.TryAcknowledge(normalizedSessionId, UserUID, out var session))
             {
-                // Validate that the acknowledging user has a pair relationship with the original sender
-                var pairExists = await DbContext.ClientPairs.AsNoTracking()
-                    .AnyAsync(p => (p.UserUID == UserUID && p.OtherUserUID == session.SenderUid) ||
-                                  (p.UserUID == session.SenderUid && p.OtherUserUID == UserUID))
-                    .ConfigureAwait(false);
-                
-                if (!pairExists)
-                {
-                    _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "SessionId:", ShortLogToken(normalizedSessionId), "Sender:", session.SenderUid));
-                    LogAcknowledgmentStat(false, "session", "pair_missing", normalizedHash, normalizedSessionId, acknowledgmentDto.Success, session.SenderUid);
-                    return;
-                }
-
                 var forwardedHash = session.DataHash;
                 if (!string.Equals(normalizedHash, forwardedHash, StringComparison.Ordinal))
                 {

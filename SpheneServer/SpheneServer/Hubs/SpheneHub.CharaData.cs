@@ -134,7 +134,19 @@ public partial class SpheneHub
                             || (p.UserUID == targetUid && p.OtherUserUID == UserUID))
                 .ConfigureAwait(false);
 
+            var sharesGroup = false;
             if (!pairExists)
+            {
+                sharesGroup = await DbContext.GroupPairs.AsNoTracking()
+                    .Join(DbContext.GroupPairs.AsNoTracking(),
+                        a => a.GroupGID,
+                        b => b.GroupGID,
+                        (a, b) => new { a, b })
+                    .AnyAsync(x => x.a.GroupUserUID == UserUID && x.b.GroupUserUID == targetUid)
+                    .ConfigureAwait(false);
+            }
+
+            if (!pairExists && !sharesGroup)
             {
                 _logger.LogCallWarning(SpheneHubLogger.Args("Hash validation denied - no pair", "Requester:", UserUID, "Target:", targetUid));
                 return new CharacterDataHashValidationResponse
