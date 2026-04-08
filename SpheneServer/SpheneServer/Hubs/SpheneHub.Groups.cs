@@ -1180,6 +1180,11 @@ public partial class SpheneHub
         // If approved, automatically join the requesting user to the group
         if (dto.Accepted)
         {
+            if (!group.InvitesEnabled)
+            {
+                _logger.LogCallInfo(SpheneHubLogger.Args("Join blocked: group is locked", dto.Group.GID, dto.User.UID));
+                return;
+            }
             await JoinUserToGroup(dto.User.UID, group, GroupUserPreferredPermissions.NoneSet).ConfigureAwait(false);
         }
 
@@ -1455,6 +1460,11 @@ public partial class SpheneHub
         // Send broadcast for each matching syncshell
         foreach (var syncshell in matchingSyncshells)
         {
+            if (syncshell.Group is { InvitesEnabled: false })
+            {
+                _logger.LogDebug("Skipping area-bound broadcast for locked syncshell {GroupId}", syncshell.GroupGID);
+                continue;
+            }
             // Check if user is already a member
             var isAlreadyMember = await DbContext.GroupPairs
                 .AnyAsync(gp => gp.GroupGID == syncshell.GroupGID && gp.GroupUserUID == UserUID)
