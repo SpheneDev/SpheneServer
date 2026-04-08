@@ -3,6 +3,7 @@ using Microsoft.VisualBasic.FileIO;
 using Prometheus;
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Net;
 
 namespace SpheneServer.Services;
 
@@ -32,8 +33,8 @@ public class SpheneCensus : IHostedService
 
     private bool Initialized => _gauge != null;
 
-    private static readonly string[] XivapiDataminingBranches = ["main", "master"];
-    private static readonly string[] XivapiDataminingCsvDirectories = ["csv/en", "csv"];
+    private static readonly string[] XivapiDataminingBranches = ["master", "main"];
+    private static readonly string[] XivapiDataminingCsvDirectories = ["csv", "csv/en"];
 
     private static string BuildXivapiDataminingCsvUrl(string branch, string csvDirectory, string csvFileName)
     {
@@ -42,6 +43,7 @@ public class SpheneCensus : IHostedService
 
     private async Task<string?> TryDownloadXivapiCsvAsync(HttpClient client, string csvFileName, CancellationToken cancellationToken)
     {
+        HttpRequestException? lastHttpException = null;
         foreach (var branch in XivapiDataminingBranches)
         {
             foreach (var csvDirectory in XivapiDataminingCsvDirectories)
@@ -53,9 +55,22 @@ public class SpheneCensus : IHostedService
                 }
                 catch (HttpRequestException ex)
                 {
-                    _logger.LogWarning(ex, "Failed to download XIVAPI data from {branch}/{dir} ({file})", branch, csvDirectory, csvFileName);
+                    lastHttpException = ex;
+                    if (ex.StatusCode == HttpStatusCode.NotFound)
+                    {
+                        continue;
+                    }
                 }
             }
+        }
+
+        if (lastHttpException != null)
+        {
+            _logger.LogWarning(lastHttpException, "Failed to download XIVAPI data ({file}) from any known location", csvFileName);
+        }
+        else
+        {
+            _logger.LogWarning("Failed to download XIVAPI data ({file}) from any known location", csvFileName);
         }
 
         return null;
