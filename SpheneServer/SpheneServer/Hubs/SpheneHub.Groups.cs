@@ -106,6 +106,7 @@ public partial class SpheneHub
         var (hasRights, group) = await TryValidateGroupModeratorOrOwner(dto.Group.GID).ConfigureAwait(false);
         if (!hasRights) return;
 
+        var invitesEnabledBefore = group.InvitesEnabled;
         group.InvitesEnabled = !dto.Permissions.HasFlag(GroupPermissions.DisableInvites);
         group.PreferDisableSounds = dto.Permissions.HasFlag(GroupPermissions.PreferDisableSounds);
         group.PreferDisableAnimations = dto.Permissions.HasFlag(GroupPermissions.PreferDisableAnimations);
@@ -115,6 +116,18 @@ public partial class SpheneHub
 
         var groupPairs = DbContext.GroupPairs.Where(p => p.GroupGID == dto.Group.GID).Select(p => p.GroupUserUID).ToList();
         await Clients.Users(groupPairs).Client_GroupChangePermissions(new GroupPermissionDto(dto.Group, dto.Permissions)).ConfigureAwait(false);
+
+        if (invitesEnabledBefore != group.InvitesEnabled)
+        {
+            var hasAreaBinding = await DbContext.AreaBoundSyncshells.AsNoTracking()
+                .AnyAsync(a => a.GroupGID == dto.Group.GID && a.AutoBroadcastEnabled)
+                .ConfigureAwait(false);
+
+            if (hasAreaBinding)
+            {
+                await Clients.All.Client_AreaBoundSyncshellConfigurationUpdate().ConfigureAwait(false);
+            }
+        }
     }
 
     [Authorize(Policy = "Identified")]
@@ -1033,6 +1046,7 @@ public partial class SpheneHub
             .ConfigureAwait(false);
 
         if (binding == null) return false;
+        if (!binding.Group.InvitesEnabled) return false;
 
         // Check if user is already in the group
         var isAlreadyMember = await DbContext.GroupPairs
