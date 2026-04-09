@@ -387,6 +387,12 @@ public partial class SpheneHub
             await _onlineSyncedPairCacheService.CachePlayers(UserUID, allPairedUsers, Context.ConnectionAborted).ConfigureAwait(false);
         }
 
+        // Only send to recipients that are actually connected on this shard right now
+        if (recipientUids.Count > 0)
+        {
+            recipientUids = recipientUids.Where(uid => _userConnections.ContainsKey(uid)).ToList();
+        }
+
         _logger.LogCallInfo(SpheneHubLogger.Args(recipientUids.Count));
 
         // Get data hash from character data
@@ -513,6 +519,30 @@ public partial class SpheneHub
             {
                 _logger.LogCallWarning(SpheneHubLogger.Args("Invalid session acknowledgment - User:", UserUID, "SessionId:", ShortLogToken(normalizedSessionId)));
                 LogAcknowledgmentStat(false, "session", "invalid_session", normalizedHash, normalizedSessionId, acknowledgmentDto.Success, null);
+            }
+        }
+        else if (_batchAcknowledgmentTracker.TryAcknowledgeByHash(normalizedHash, UserUID, out var sessionByHash))
+        {
+            var forwardedHash = sessionByHash.DataHash;
+
+            var forwardedAcknowledgment = new CharacterDataAcknowledgmentDto(new UserData(UserUID), forwardedHash)
+            {
+                Success = acknowledgmentDto.Success,
+                ErrorCode = acknowledgmentDto.ErrorCode,
+                ErrorMessage = acknowledgmentDto.ErrorMessage,
+                AcknowledgedAt = acknowledgedAt,
+                SessionId = sessionByHash.SessionId
+            };
+
+            var forwardedViaV2 = await SendAcknowledgmentToSenderAsync(sessionByHash.SenderUid, forwardedAcknowledgment).ConfigureAwait(false);
+            LogAcknowledgmentStat(true, forwardedViaV2 ? "session_by_hash_v2" : "session_by_hash", "forwarded", forwardedHash, sessionByHash.SessionId, acknowledgmentDto.Success, sessionByHash.SenderUid);
+
+            if (_batchAcknowledgmentTracker.IsSessionCompleted(sessionByHash.SessionId))
+            {
+                _batchAcknowledgmentTracker.CompleteSession(sessionByHash.SessionId);
+                RememberSessionAcknowledgmentCompletion(sessionByHash.SenderUid, forwardedHash);
+                _logger.LogCallInfo(SpheneHubLogger.Args("SessionComplete - SessionId:", ShortLogToken(sessionByHash.SessionId)));
+                LogAcknowledgmentStat(true, "session_by_hash", "completed", forwardedHash, sessionByHash.SessionId, acknowledgmentDto.Success, null);
             }
         }
         // Handle legacy hash-based acknowledgments for backward compatibility

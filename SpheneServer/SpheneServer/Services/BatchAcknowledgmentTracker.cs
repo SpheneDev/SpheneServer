@@ -64,6 +64,41 @@ public class BatchAcknowledgmentTracker
         return true;
     }
 
+    public bool TryAcknowledgeByHash(string dataHash, string recipientUid, out BatchAcknowledgmentSession? session)
+    {
+        session = null;
+
+        var best = (BatchAcknowledgmentSession?)null;
+        foreach (var kvp in _sessions)
+        {
+            var candidate = kvp.Value;
+            if (!string.Equals(candidate.DataHash, dataHash, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            lock (candidate)
+            {
+                if (!candidate.PendingRecipients.Contains(recipientUid))
+                {
+                    continue;
+                }
+            }
+
+            if (best == null || candidate.CreatedAt > best.CreatedAt)
+            {
+                best = candidate;
+            }
+        }
+
+        if (best == null)
+        {
+            return false;
+        }
+
+        return TryAcknowledge(best.SessionId, recipientUid, out session);
+    }
+
     public bool IsSessionCompleted(string sessionId)
     {
         if (_sessions.TryGetValue(sessionId, out var session))

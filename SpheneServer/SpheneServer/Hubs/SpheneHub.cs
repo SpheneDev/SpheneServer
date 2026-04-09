@@ -274,6 +274,17 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
                 _userClientVersions.Remove(UserUID, out _);
                 CleanupAcknowledgmentMappingsForUser(UserUID);
                 await ResetMutualVisibilityForUserAsync(UserUID).ConfigureAwait(false);
+                
+                // Clean possible stale online keys for peers referencing this user (defensive)
+                try
+                {
+                    var paired = await GetAllPairedUnpausedUsers(UserUID).ConfigureAwait(false);
+                    foreach (var p in paired)
+                    {
+                        // No-op: rely on peers re-fetching online lists; this block gives us a place to extend if needed
+                    }
+                }
+                catch { }
             }
         }
         else
