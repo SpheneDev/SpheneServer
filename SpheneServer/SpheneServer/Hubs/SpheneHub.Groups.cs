@@ -1023,6 +1023,7 @@ public partial class SpheneHub
             
             var dto = new AreaBoundSyncshellDto(binding.Group.ToGroupData(), boundAreas)
             {
+                IsLocked = !binding.Group.InvitesEnabled,
                 Settings = settings
             };
             
@@ -1474,11 +1475,6 @@ public partial class SpheneHub
         // Send broadcast for each matching syncshell
         foreach (var syncshell in matchingSyncshells)
         {
-            if (syncshell.Group is { InvitesEnabled: false })
-            {
-                _logger.LogDebug("Skipping area-bound broadcast for locked syncshell {GroupId}", syncshell.GroupGID);
-                continue;
-            }
             // Check if user is already a member
             var isAlreadyMember = await DbContext.GroupPairs
                 .AnyAsync(gp => gp.GroupGID == syncshell.GroupGID && gp.GroupUserUID == UserUID)
@@ -1539,7 +1535,10 @@ public partial class SpheneHub
                     RoomId = matchingLocation.RoomId
                 },
                 usersInArea
-            );
+            )
+            {
+                IsLocked = !syncshell.Group.InvitesEnabled
+            };
 
             // Send broadcast to the user
             await Clients.User(UserUID).Client_AreaBoundSyncshellBroadcast(broadcastDto).ConfigureAwait(false);
