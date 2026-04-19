@@ -44,10 +44,8 @@ public class SecretKeyAuthenticatorService
 
     public async Task<SecretKeyAuthReply> AuthorizeAsync(string ip, string hashedSecretKey)
     {
-        _logger.LogError("=== AuthorizeAsync CALLED === IP: {IP}, HashedKey: {HashedKey}", ip, hashedSecretKey);
+        _logger.LogDebug("AuthorizeAsync called: ip={IP} hashedKey={HashedKey}", ip, hashedSecretKey);
         _metrics.IncCounter(MetricsAPI.CounterAuthenticationRequests);
-
-        _logger.LogError("AuthorizeAsync Debug: IP: {IP}, HashedKey: {HashedKey}", ip, hashedSecretKey);
 
         var checkOnIp = FailOnIp(ip);
         if (checkOnIp != null) return checkOnIp;
@@ -56,7 +54,7 @@ public class SecretKeyAuthenticatorService
         var authReply = await context.Auth.Include(a => a.User).AsNoTracking()
             .SingleOrDefaultAsync(u => u.HashedKey == hashedSecretKey).ConfigureAwait(false);
         
-        _logger.LogError("AuthorizeAsync Debug: authReply found: {AuthReplyFound}, UserUID: {UserUID}, User loaded: {UserLoaded}", 
+        _logger.LogDebug("AuthorizeAsync: authReplyFound={AuthReplyFound} userUid={UserUID} userLoaded={UserLoaded}", 
             authReply != null, authReply?.UserUID, authReply?.User != null);
         
         return await GetAuthReply(ip, context, authReply).ConfigureAwait(false);
@@ -68,8 +66,7 @@ public class SecretKeyAuthenticatorService
         var markedForBan = authReply?.MarkForBan ?? false;
         var primaryUid = authReply?.PrimaryUserUID ?? authReply?.UserUID;
 
-        // Debug logging
-        _logger.LogError("GetAuthReply Debug: authReply != null: {AuthReplyNotNull}, UserUID: {UserUID}, User != null: {UserNotNull}, User.Alias: {UserAlias}", 
+        _logger.LogDebug("GetAuthReply: authReplyNotNull={AuthReplyNotNull} userUid={UserUID} userNotNull={UserNotNull} userAlias={UserAlias}", 
             authReply != null, authReply?.UserUID, authReply?.User != null, authReply?.User?.Alias);
 
         if (authReply?.PrimaryUserUID != null)
