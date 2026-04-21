@@ -34,7 +34,7 @@ public class CharaData
     public string? HonorificData { get; set; }
     public string? MoodlesData { get; set; }
     public string? PetNamesData { get; set; }
-    public string? BypassEmoteData { get; set; }
+    public bool HasBypassEmote { get; set; } = false;
     public int DownloadCount { get; set; } = 0;
     public virtual ICollection<CharaDataPose> Poses { get; set; } = [];
     public virtual ICollection<CharaDataFile> Files { get; set; } = [];

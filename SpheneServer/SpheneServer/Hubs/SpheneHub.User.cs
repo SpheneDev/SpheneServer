@@ -548,18 +548,9 @@ public partial class SpheneHub
         // Handle legacy hash-based acknowledgments for backward compatibility
         else if (_acknowledgmentSenders.TryGetValue(normalizedHash, out var legacySender))
         {
-            // Clean up the acknowledgment mapping FIRST to prevent duplicate processing
-            var removed = _acknowledgmentSenders.TryRemove(normalizedHash, out _);
-            
-            if (!removed)
-            {
-                _logger.LogCallWarning(SpheneHubLogger.Args("Acknowledgment already processed - User:", UserUID, "Hash:", ShortLogToken(normalizedHash)));
-                LogAcknowledgmentStat(false, "legacy", "already_processed", normalizedHash, string.Empty, acknowledgmentDto.Success, legacySender.SenderUid);
-                return;
-            }
-            
             var originalSenderUid = legacySender.SenderUid;
-            // Validate that the acknowledging user has a pair relationship with the original sender
+            
+            // Validate that the acknowledging user has a pair relationship with the original sender BEFORE removing
             var pairExists = await DbContext.ClientPairs.AsNoTracking()
                 .AnyAsync(p => (p.UserUID == UserUID && p.OtherUserUID == originalSenderUid) ||
                               (p.UserUID == originalSenderUid && p.OtherUserUID == UserUID))
@@ -569,6 +560,16 @@ public partial class SpheneHub
             {
                 _logger.LogCallWarning(SpheneHubLogger.Args("No pair relationship - User:", UserUID, "Hash:", ShortLogToken(normalizedHash), "Sender:", originalSenderUid));
                 LogAcknowledgmentStat(false, "legacy", "pair_missing", normalizedHash, string.Empty, acknowledgmentDto.Success, originalSenderUid);
+                return;
+            }
+            
+            // Clean up the acknowledgment mapping AFTER validation to prevent TOCTOU race
+            var removed = _acknowledgmentSenders.TryRemove(normalizedHash, out _);
+            
+            if (!removed)
+            {
+                _logger.LogCallWarning(SpheneHubLogger.Args("Acknowledgment already processed - User:", UserUID, "Hash:", ShortLogToken(normalizedHash)));
+                LogAcknowledgmentStat(false, "legacy", "already_processed", normalizedHash, string.Empty, acknowledgmentDto.Success, legacySender.SenderUid);
                 return;
             }
 

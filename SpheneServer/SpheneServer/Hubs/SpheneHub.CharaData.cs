@@ -385,7 +385,7 @@ public partial class SpheneHub
             return;
         }
 
-        charaData.BypassEmoteData = updateDto.BypassEmoteData;
+        charaData.HasBypassEmote = !string.IsNullOrEmpty(updateDto.BypassEmoteData);
         charaData.UpdatedDate = DateTime.UtcNow;
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
     }
@@ -464,9 +464,9 @@ public partial class SpheneHub
             anyChanges = true;
         }
 
-        if (updateDto.BypassEmoteData != null)
+        if (updateDto.HasBypassEmote != null)
         {
-            charaData.BypassEmoteData = updateDto.BypassEmoteData;
+            charaData.HasBypassEmote = updateDto.HasBypassEmote.Value;
             anyChanges = true;
         }
 
@@ -691,7 +691,7 @@ public partial class SpheneHub
             HonorificData = charaData.HonorificData,
             MoodlesData = charaData.MoodlesData,
             PetNamesData = charaData.PetNamesData,
-            BypassEmoteData = charaData.BypassEmoteData,
+            HasBypassEmote = charaData.HasBypassEmote,
         };
     }
 
@@ -717,7 +717,7 @@ public partial class SpheneHub
             HonorificData = charaData.HonorificData,
             MoodlesData = charaData.MoodlesData,
             PetNamesData = charaData.PetNamesData,
-            BypassEmoteData = charaData.BypassEmoteData,
+            HasBypassEmote = charaData.HasBypassEmote,
             DownloadCount = charaData.DownloadCount,
             PoseData = [.. charaData.Poses.OrderBy(p => p.Id).Select(k =>
             {
