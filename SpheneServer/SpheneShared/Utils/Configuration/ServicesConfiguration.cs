@@ -4,7 +4,7 @@ namespace SpheneShared.Utils.Configuration;
 
 public class ServicesConfiguration : SpheneConfigurationBase
 {
-    public const string DefaultDiscordChangelogUrl = "https://sphene.online/sphene_changelogs/changelog.json";
+    public const string DefaultDiscordChangelogUrl = "https://raw.githubusercontent.com/SpheneDev/repo/refs/heads/main/changelogs/sphene.json";
     public const string DefaultDiscordPluginMasterUrl = "https://raw.githubusercontent.com/SpheneDev/repo/refs/heads/main/plogonmaster.json";
 
     public string DiscordBotToken { get; set; } = string.Empty;
