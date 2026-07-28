@@ -16,13 +16,23 @@ public class BatchAcknowledgmentSession
 public class BatchAcknowledgmentTracker
 {
     private readonly ConcurrentDictionary<string, BatchAcknowledgmentSession> _sessions = new(StringComparer.Ordinal);
-    private readonly Timer _cleanupTimer;
-    private readonly TimeSpan _sessionTimeout = TimeSpan.FromMinutes(5);
+    private readonly TimeProvider _timeProvider;
+    private readonly ITimer? _cleanupTimer;
+    private readonly TimeSpan _sessionTimeout;
+    private readonly TimeSpan _cleanupInterval;
 
-    public BatchAcknowledgmentTracker()
+    public BatchAcknowledgmentTracker(TimeProvider? timeProvider = null, TimeSpan? sessionTimeout = null, TimeSpan? cleanupInterval = null)
     {
-        // Cleanup expired sessions every minute
-        _cleanupTimer = new Timer(CleanupExpiredSessions, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _sessionTimeout = sessionTimeout ?? TimeSpan.FromMinutes(5);
+        _cleanupInterval = cleanupInterval ?? TimeSpan.FromMinutes(1);
+
+        // Only start periodic cleanup if using the real system clock.
+        // Tests with a fake time provider should call CleanupExpiredSessions explicitly.
+        if (_timeProvider == TimeProvider.System)
+        {
+            _cleanupTimer = _timeProvider.CreateTimer(CleanupExpiredSessions, null, _cleanupInterval, _cleanupInterval);
+        }
     }
 
     public string CreateSession(string dataHash, string senderUid, IEnumerable<string> recipientUids)
@@ -34,7 +44,7 @@ public class BatchAcknowledgmentTracker
             DataHash = dataHash,
             SenderUid = senderUid,
             PendingRecipients = new HashSet<string>(recipientUids, StringComparer.Ordinal),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = _timeProvider.GetUtcNow().DateTime
         };
 
         _sessions.TryAdd(sessionId, session);
@@ -131,10 +141,10 @@ public class BatchAcknowledgmentTracker
         }
     }
 
-    private void CleanupExpiredSessions(object? state)
+    public void CleanupExpiredSessions(object? state = null)
     {
         var expiredSessions = new List<string>();
-        var cutoffTime = DateTime.UtcNow - _sessionTimeout;
+        var cutoffTime = _timeProvider.GetUtcNow().DateTime - _sessionTimeout;
 
         foreach (var kvp in _sessions)
         {

@@ -231,7 +231,15 @@ public class PublicCitySyncshellService : IHostedService
         if (existingGroup != null)
         {
             _logger.LogDebug("Public syncshell for {CityName} on {WorldName} already exists with GID {GID}", city.Name, world.Name, existingGroup.GID);
-            
+
+            // Ensure InvitesEnabled is true — it was incorrectly set to false on creation,
+            // which locks the syncshell (IsLocked = !InvitesEnabled)
+            if (!existingGroup.InvitesEnabled)
+            {
+                existingGroup.InvitesEnabled = true;
+                _logger.LogInformation("Fixed locked public syncshell for {CityName} on {WorldName} (GID: {GID}) — re-enabled InvitesEnabled", city.Name, world.Name, existingGroup.GID);
+            }
+
             // Load the AreaBoundSyncshell and its locations separately
             var existingAreaBoundSyncshell = await dbContext.AreaBoundSyncshells
                 .Include(abs => abs.Locations)
@@ -290,7 +298,7 @@ public class PublicCitySyncshellService : IHostedService
         {
             GID = gid,
             HashedPassword = hashedPassword,
-            InvitesEnabled = false, // Public syncshells don't need invites
+            InvitesEnabled = true, // Must be true — InvitesEnabled is overloaded as a lock flag (IsLocked = !InvitesEnabled)
             OwnerUID = systemUser.UID,
             Alias = alias,
             PreferDisableAnimations = false,
