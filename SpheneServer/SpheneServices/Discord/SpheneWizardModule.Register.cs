@@ -239,7 +239,7 @@ public partial class SpheneWizardModule
         if (db.LodeStoneAuth.Any(a => a.HashedLodestoneId == hashedLodestoneId))
         {
             // character already in db
-            embed.WithDescription("This lodestone character already exists in the Database. If you want to attach this character to your current Discord account use relink.");
+            embed.WithDescription("This lodestone character already exists in the Database. If you want to attach this character to your current Discord account, go back to the home screen and use \"🔗 Relink\".");
             return (false, string.Empty);
         }
 

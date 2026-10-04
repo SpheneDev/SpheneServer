@@ -15,7 +15,9 @@ public class ServicesConfiguration : SpheneConfigurationBase
     public ulong? DiscordChannelForReleaseChangelogs { get; set; } = null;
     public ulong? DiscordChannelForTestBuildChangelogs { get; set; } = null;
     public ulong? DiscordRoleRegistered { get; set; } = null!;
+    public ulong? DiscordRoleSupporter { get; set; } = null!;
     public bool KickNonRegisteredUsers { get; set; } = false;
+    public string KofiWebhookToken { get; set; } = string.Empty;
     public string DiscordChangelogUrl { get; set; } = DefaultDiscordChangelogUrl;
     public string DiscordPluginMasterUrl { get; set; } = DefaultDiscordPluginMasterUrl;
     public Uri MainServerAddress { get; set; } = null;
@@ -33,6 +35,8 @@ public class ServicesConfiguration : SpheneConfigurationBase
         sb.AppendLine($"{nameof(DiscordChannelForReleaseChangelogs)} => {DiscordChannelForReleaseChangelogs}");
         sb.AppendLine($"{nameof(DiscordChannelForTestBuildChangelogs)} => {DiscordChannelForTestBuildChangelogs}");
         sb.AppendLine($"{nameof(DiscordRoleRegistered)} => {DiscordRoleRegistered}");
+        sb.AppendLine($"{nameof(DiscordRoleSupporter)} => {DiscordRoleSupporter}");
+        sb.AppendLine($"{nameof(KofiWebhookToken)} => {(string.IsNullOrWhiteSpace(KofiWebhookToken) ? "<empty>" : "<redacted>")}");
         sb.AppendLine($"{nameof(KickNonRegisteredUsers)} => {KickNonRegisteredUsers}");
         sb.AppendLine($"{nameof(DiscordChangelogUrl)} => {DiscordChangelogUrl}");
         sb.AppendLine($"{nameof(DiscordPluginMasterUrl)} => {DiscordPluginMasterUrl}");

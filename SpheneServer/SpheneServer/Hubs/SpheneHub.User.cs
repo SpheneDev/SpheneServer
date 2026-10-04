@@ -698,54 +698,27 @@ public partial class SpheneHub
             return;
         }
 
-        // Create ordered key (A|B) to track mutual state regardless of report order
-        var (uidA, uidB) = string.Compare(dto.Reporter.UID, dto.Target.UID, StringComparison.Ordinal) <= 0
-            ? (dto.Reporter.UID, dto.Target.UID)
-            : (dto.Target.UID, dto.Reporter.UID);
-        var key = string.Create(uidA.Length + uidB.Length + 1, (uidA, uidB), (span, state) =>
-        {
-            state.uidA.AsSpan().CopyTo(span);
-            span[state.uidA.Length] = '|';
-            state.uidB.AsSpan().CopyTo(span.Slice(state.uidA.Length + 1));
-        });
-
+        // Delegate state management to MutualVisibilityTracker
         var now = DateTime.UtcNow;
-        var state = _mutualVisibilityStates.GetOrAdd(key, _ => new MutualVisibilityState { UidA = uidA, UidB = uidB });
+        var result = _mutualVisibilityTracker.ProcessReport(dto.Reporter.UID, dto.Target.UID, dto.IsVisible, now);
 
-        // Update state based on who reported
-        if (string.Equals(dto.Reporter.UID, uidA, StringComparison.Ordinal))
+        if (result.Dto is not null)
         {
-            state.LastSeenA = dto.IsVisible;
-            state.LastReportA = now;
-        }
-        else
-        {
-            state.LastSeenB = dto.IsVisible;
-            state.LastReportB = now;
-        }
-
-        // Determine mutual visibility immediately without a time window
-        bool newMutual = state.LastSeenA && state.LastSeenB;
-
-        if (newMutual != state.IsMutual)
-        {
-            state.IsMutual = newMutual;
-            var mutualDto = new Sphene.API.Dto.Visibility.MutualVisibilityDto(new(uidA), new(uidB), newMutual, now);
-
             // Broadcast to both users if they are online
-            var identA = await GetUserIdent(uidA).ConfigureAwait(false);
-            var identB = await GetUserIdent(uidB).ConfigureAwait(false);
+            foreach (var recipientUid in result.RecipientUids)
+            {
+                var ident = await GetUserIdent(recipientUid).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(ident))
+                {
+                    await Clients.User(recipientUid).Client_UserMutualVisibilityUpdate(result.Dto).ConfigureAwait(false);
+                }
+            }
 
-            if (!string.IsNullOrEmpty(identA))
-                await Clients.User(uidA).Client_UserMutualVisibilityUpdate(mutualDto).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(identB))
-                await Clients.User(uidB).Client_UserMutualVisibilityUpdate(mutualDto).ConfigureAwait(false);
-
-            _logger.LogCallInfo(SpheneHubLogger.Args("Mutual visibility updated", key, newMutual));
+            _logger.LogCallInfo(SpheneHubLogger.Args("Mutual visibility updated", dto.Reporter.UID, dto.Target.UID, result.Dto.IsMutuallyVisible));
         }
         else
         {
-            _logger.LogCallInfo(SpheneHubLogger.Args("Visibility report processed", key, "A", state.LastSeenA, "B", state.LastSeenB));
+            _logger.LogCallInfo(SpheneHubLogger.Args("Visibility report processed", dto.Reporter.UID, dto.Target.UID));
         }
     }
 

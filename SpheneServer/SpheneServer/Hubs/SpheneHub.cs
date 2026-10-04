@@ -32,7 +32,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private static readonly BatchAcknowledgmentTracker _batchAcknowledgmentTracker = new();
     private static readonly ConcurrentDictionary<string, DateTime> _recentSessionAcknowledgments = new(StringComparer.Ordinal);
     // Track mutual visibility reports per ordered pair key (uidA|uidB)
-    private static readonly ConcurrentDictionary<string, MutualVisibilityState> _mutualVisibilityStates = new(StringComparer.Ordinal);
+    private static readonly MutualVisibilityTracker _mutualVisibilityTracker = new();
     private readonly SpheneMetrics _SpheneMetrics;
     private readonly SystemInfoService _systemInfoService;
     private readonly IHttpContextAccessor _contextAccessor;
@@ -50,16 +50,6 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private readonly Version _expectedClientVersion;
     private readonly Version _minimumClientVersion;
 
-    private sealed class MutualVisibilityState
-    {
-        public DateTime LastReportA { get; set; } = DateTime.MinValue;
-        public DateTime LastReportB { get; set; } = DateTime.MinValue;
-        public bool LastSeenA { get; set; } = false; // A reports seeing B
-        public bool LastSeenB { get; set; } = false; // B reports seeing A
-        public bool IsMutual { get; set; } = false;
-        public string UidA { get; set; } = string.Empty;
-        public string UidB { get; set; } = string.Empty;
-    }
     private readonly Lazy<SpheneDbContext> _dbContextLazy;
     private SpheneDbContext DbContext => _dbContextLazy.Value;
     private readonly int _maxCharaDataByUser;
@@ -148,6 +138,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
             ServerVersion = ISpheneHub.ApiVersion,
             IsAdmin = dbUser.IsAdmin,
             IsModerator = dbUser.IsModerator,
+            IsSupporter = dbUser.IsSupporter,
             ServerInfo = new ServerInfo()
             {
                 MaxGroupsCreatedByUser = _maxExistingGroupsByUser,
@@ -236,7 +227,37 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
 
         await CheckPendingFileTransfersAsync().ConfigureAwait(false);
 
+        // Resend the current mutual visibility state for all pairs involving this user so a
+        // reconnecting client does not get stuck assuming a stale state from before the disconnect.
+        await SendCurrentMutualVisibilityToUserAsync(UserUID).ConfigureAwait(false);
+
         await base.OnConnectedAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends the current <see cref="Sphene.API.Dto.Visibility.MutualVisibilityDto"/> for every
+    /// pair involving <paramref name="userUid"/> to that user. Used on (re)connect to ensure the
+    /// client has an up-to-date view of mutual visibility, even if the state was settled while the
+    /// client was offline or transitioning between zones.
+    /// </summary>
+    private async Task SendCurrentMutualVisibilityToUserAsync(string userUid)
+    {
+        try
+        {
+            var dtos = _mutualVisibilityTracker.GetAllCurrentStatesForUser(userUid, DateTime.UtcNow);
+            foreach (var dto in dtos)
+            {
+                var ident = await GetUserIdent(userUid).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(ident))
+                {
+                    await Clients.User(userUid).Client_UserMutualVisibilityUpdate(dto).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("Failed to resend mutual visibility on connect", userUid, ex.Message));
+        }
     }
 
     [Authorize(Policy = "Authenticated")]
@@ -301,41 +322,23 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         try
         {
             var now = DateTime.UtcNow;
-            foreach (var kvp in _mutualVisibilityStates)
+            var results = _mutualVisibilityTracker.ProcessDisconnect(userUid, now);
+
+            foreach (var result in results)
             {
-                var state = kvp.Value;
-                if (!string.Equals(state.UidA, userUid, StringComparison.Ordinal) &&
-                    !string.Equals(state.UidB, userUid, StringComparison.Ordinal))
+                if (result.Dto is null)
                     continue;
 
-                // Mark the disconnecting user's last seen as false and update timestamp
-                if (string.Equals(state.UidA, userUid, StringComparison.Ordinal))
+                foreach (var recipientUid in result.RecipientUids)
                 {
-                    state.LastSeenA = false;
-                    state.LastReportA = now;
-                }
-                else
-                {
-                    state.LastSeenB = false;
-                    state.LastReportB = now;
+                    var ident = await GetUserIdent(recipientUid).ConfigureAwait(false);
+                    if (!string.IsNullOrEmpty(ident))
+                    {
+                        await Clients.User(recipientUid).Client_UserMutualVisibilityUpdate(result.Dto).ConfigureAwait(false);
+                    }
                 }
 
-                var newMutual = state.LastSeenA && state.LastSeenB;
-                if (newMutual != state.IsMutual)
-                {
-                    state.IsMutual = newMutual;
-                    var dto = new Sphene.API.Dto.Visibility.MutualVisibilityDto(new(state.UidA), new(state.UidB), false, now);
-
-                    var identA = await GetUserIdent(state.UidA).ConfigureAwait(false);
-                    var identB = await GetUserIdent(state.UidB).ConfigureAwait(false);
-
-                    if (!string.IsNullOrEmpty(identA))
-                        await Clients.User(state.UidA).Client_UserMutualVisibilityUpdate(dto).ConfigureAwait(false);
-                    if (!string.IsNullOrEmpty(identB))
-                        await Clients.User(state.UidB).Client_UserMutualVisibilityUpdate(dto).ConfigureAwait(false);
-
-                    _logger.LogCallInfo(SpheneHubLogger.Args("Visibility reset due to disconnect", kvp.Key));
-                }
+                _logger.LogCallInfo(SpheneHubLogger.Args("Visibility reset due to disconnect", userUid));
             }
         }
         catch (Exception ex)

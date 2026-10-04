@@ -1,4 +1,5 @@
 using SpheneServices.Discord;
+using SpheneServices.Kofi;
 using SpheneShared.Data;
 using SpheneShared.Metrics;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,12 @@ public class Startup
 
         var metricServer = new KestrelMetricServer(config.GetValueOrDefault<int>(nameof(SpheneConfigurationBase.MetricsPort), 4982));
         metricServer.Start();
+
+        app.UseRouting();
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllers();
+        });
     }
 
     public void ConfigureServices(IServiceCollection services)
@@ -73,6 +80,8 @@ public class Startup
         services.AddSingleton<ServerTokenGenerator>();
         services.AddSingleton<DiscordBotServices>();
         services.AddHostedService<DiscordBot>();
+        services.AddControllers();
+        services.AddSingleton<KofiWebhookService>();
         services.AddSingleton<IConfigurationService<ServicesConfiguration>, SpheneConfigurationServiceServer<ServicesConfiguration>>();
         services.AddSingleton<IConfigurationService<ServerConfiguration>, SpheneConfigurationServiceClient<ServerConfiguration>>();
         services.AddSingleton<IConfigurationService<SpheneConfigurationBase>, SpheneConfigurationServiceClient<SpheneConfigurationBase>>();

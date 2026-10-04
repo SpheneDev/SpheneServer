@@ -202,6 +202,103 @@ public sealed class R2StorageService
         return prefix + hash.ToUpperInvariant();
     }
 
+    public async Task<List<R2ObjectInfo>> ListObjectsAsync(CancellationToken ct)
+    {
+        if (!IsEnabled())
+        {
+            return [];
+        }
+
+        if (!TryGetClient(out var client, out var bucket))
+        {
+            _logger.LogWarning("R2 is enabled but missing configuration values; skipping list");
+            return [];
+        }
+
+        var prefix = _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.R2KeyPrefix), string.Empty) ?? string.Empty;
+        if (!string.IsNullOrEmpty(prefix) && !prefix.EndsWith("/", StringComparison.Ordinal))
+        {
+            prefix += "/";
+        }
+
+        var objects = new List<R2ObjectInfo>();
+        string? continuationToken = null;
+
+        do
+        {
+            var request = new ListObjectsV2Request
+            {
+                BucketName = bucket,
+                Prefix = prefix,
+                MaxKeys = 1000
+            };
+
+            if (continuationToken != null)
+            {
+                request.ContinuationToken = continuationToken;
+            }
+
+            var response = await client.ListObjectsV2Async(request, ct).ConfigureAwait(false);
+
+            foreach (var s3Object in response.S3Objects)
+            {
+                objects.Add(new R2ObjectInfo
+                {
+                    Key = s3Object.Key,
+                    Size = s3Object.Size,
+                    LastModified = s3Object.LastModified
+                });
+            }
+
+            continuationToken = response.IsTruncated ? response.NextContinuationToken : null;
+        }
+        while (continuationToken != null && !ct.IsCancellationRequested);
+
+        _logger.LogInformation("R2 list completed: {count} objects in bucket {bucket}", objects.Count, bucket);
+        return objects;
+    }
+
+    public async Task<bool> DeleteObjectByHashAsync(string hash, CancellationToken ct)
+    {
+        if (!IsEnabled())
+        {
+            return false;
+        }
+
+        var key = BuildObjectKey(hash.ToUpperInvariant());
+        return await DeleteObjectAsync(key, ct).ConfigureAwait(false);
+    }
+
+    public async Task<bool> DeleteObjectAsync(string key, CancellationToken ct)
+    {
+        if (!IsEnabled())
+        {
+            return false;
+        }
+
+        if (!TryGetClient(out var client, out var bucket))
+        {
+            return false;
+        }
+
+        try
+        {
+            await client.DeleteObjectAsync(new DeleteObjectRequest
+            {
+                BucketName = bucket,
+                Key = key
+            }, ct).ConfigureAwait(false);
+
+            _logger.LogInformation("R2 object deleted: {bucket}/{key}", bucket, key);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "R2 delete failed for {bucket}/{key}", bucket, key);
+            return false;
+        }
+    }
+
     private async Task UploadAsync(string hash, string localFilePath)
     {
         try
@@ -217,4 +314,11 @@ public sealed class R2StorageService
             _uploadsInFlight.TryRemove(hash, out _);
         }
     }
+}
+
+public sealed class R2ObjectInfo
+{
+    public string Key { get; set; } = string.Empty;
+    public long Size { get; set; }
+    public DateTime LastModified { get; set; }
 }

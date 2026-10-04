@@ -141,6 +141,7 @@ internal class DiscordBot : IHostedService
         _ = UpdateVanityRoles(guild, _clientConnectedCts.Token);
         _ = RemoveUsersNotInVanityRole(_clientConnectedCts.Token);
         _ = RemoveUnregisteredUsers(_clientConnectedCts.Token);
+        _ = SyncSupporterRoles(_clientConnectedCts.Token);
         _ = MonitorChangelogPostsAsync(_clientConnectedCts.Token);
     }
 
@@ -334,6 +335,87 @@ internal class DiscordBot : IHostedService
         }
 
         await _botServices.LogToChannel($"Processing registered users finished. Processed {processedUsers} users, added {addedRoles} roles and kicked {kickedUsers} users").ConfigureAwait(false);
+    }
+
+    private async Task SyncSupporterRoles(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await ProcessSupporterRoles(token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // do nothing
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during supporter role sync");
+                await _botServices.LogToChannel($"Error during supporter role sync: {ex.Message}").ConfigureAwait(false);
+            }
+
+            await Task.Delay(TimeSpan.FromHours(1), token).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ProcessSupporterRoles(CancellationToken token)
+    {
+        var supporterRoleId = _configurationService.GetValueOrDefault<ulong?>(nameof(ServicesConfiguration.DiscordRoleSupporter), null);
+        if (supporterRoleId == null)
+        {
+            _logger.LogDebug("Supporter role ID not configured, skipping sync");
+            return;
+        }
+
+        var guild = (await _discordClient.Rest.GetGuildsAsync().ConfigureAwait(false)).First();
+        using var dbContext = await _dbContextFactory.CreateDbContextAsync(token).ConfigureAwait(false);
+
+        var allLodestoneAuths = await dbContext.LodeStoneAuth
+            .Include(la => la.User)
+            .AsNoTracking()
+            .ToListAsync(token).ConfigureAwait(false);
+
+        int addedSupporters = 0;
+        int removedSupporters = 0;
+
+        foreach (var lodestoneAuth in allLodestoneAuths)
+        {
+            token.ThrowIfCancellationRequested();
+            if (lodestoneAuth.User == null) continue;
+
+            var discordUser = await guild.GetUserAsync(lodestoneAuth.DiscordId).ConfigureAwait(false);
+            if (discordUser == null) continue;
+
+            var hasRole = discordUser.RoleIds.Contains(supporterRoleId.Value);
+            var dbUser = await dbContext.Users.SingleOrDefaultAsync(u => u.UID == lodestoneAuth.User.UID, token).ConfigureAwait(false);
+            if (dbUser == null) continue;
+
+            if (hasRole && !dbUser.IsSupporter)
+            {
+                dbUser.IsSupporter = true;
+                dbContext.Users.Update(dbUser);
+                addedSupporters++;
+                _logger.LogInformation("User {uid} marked as supporter (Discord role detected)", dbUser.UID);
+            }
+            else if (!hasRole && dbUser.IsSupporter)
+            {
+                dbUser.IsSupporter = false;
+                dbContext.Users.Update(dbUser);
+                removedSupporters++;
+                _logger.LogInformation("User {uid} supporter status removed (Discord role no longer present)", dbUser.UID);
+            }
+        }
+
+        if (addedSupporters > 0 || removedSupporters > 0)
+        {
+            await dbContext.SaveChangesAsync(token).ConfigureAwait(false);
+            await _botServices.LogToChannel($"Supporter role sync complete. Added: {addedSupporters}, Removed: {removedSupporters}").ConfigureAwait(false);
+        }
+        else
+        {
+            _logger.LogDebug("Supporter role sync complete. No changes needed.");
+        }
     }
 
     private async Task RemoveUsersNotInVanityRole(CancellationToken token)

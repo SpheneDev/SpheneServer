@@ -14,6 +14,8 @@ public class User
 
     public bool IsAdmin { get; set; } = false;
 
+    public bool IsSupporter { get; set; } = false;
+
     public DateTime LastLoggedIn { get; set; }
     [MaxLength(15)]
     public string Alias { get; set; }

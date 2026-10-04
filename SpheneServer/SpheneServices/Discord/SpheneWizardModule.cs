@@ -280,6 +280,7 @@ public partial class SpheneWizardModule : InteractionModuleBase
         description += Environment.NewLine
             + (!hasAccount ? string.Empty : ("- Check your soul resonance status press \"ℹ️ User Info\"" + Environment.NewLine))
             + (hasAccount ? string.Empty : ("- Initialize new soul connection press \"⚛ Register\"" + Environment.NewLine))
+            + (hasAccount ? string.Empty : ("- Reestablish soul link to a different Discord account press \"🔗 Relink\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Recalibrate your soul resonance identifier press \"✨ Soul Identity\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Generate an additional soul fragment (secondary UID) press \"➕ New UID\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Generate a new electrope key press \"🔑 New Key\"" + Environment.NewLine))
@@ -291,6 +292,7 @@ public partial class SpheneWizardModule : InteractionModuleBase
         if (!hasAccount)
         {
             cb.WithButton("Register", "wizard-register", ButtonStyle.Primary, new Emoji("⚛"));
+            cb.WithButton("Relink", "wizard-relink", ButtonStyle.Secondary, new Emoji("🔗"));
         }
         else
         {

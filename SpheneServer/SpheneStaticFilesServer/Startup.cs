@@ -100,6 +100,7 @@ public class Startup
             services.AddSingleton<IClientReadyMessageService, MainClientReadyMessageService>();
             services.AddHostedService<MainFileCleanupService>();
             services.AddHostedService<R2BackfillHostedService>();
+            services.AddHostedService<R2CleanupService>();
             services.AddSingleton<IConfigurationService<StaticFilesServerConfiguration>, SpheneConfigurationServiceServer<StaticFilesServerConfiguration>>();
             services.AddSingleton<MainServerShardRegistrationService>();
             services.AddHostedService(s => s.GetRequiredService<MainServerShardRegistrationService>());

@@ -20,7 +20,7 @@ public static class Extensions
 
     public static UserData ToUserData(this User user)
     {
-        return new UserData(user.UID, user.Alias);
+        return new UserData(user.UID, user.Alias, user.IsSupporter);
     }
 
     public static IndividualPairStatus ToIndividualPairStatus(this UserInfo userInfo)

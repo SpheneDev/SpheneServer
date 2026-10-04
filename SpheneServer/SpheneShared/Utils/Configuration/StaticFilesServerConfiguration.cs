@@ -40,6 +40,9 @@ public class StaticFilesServerConfiguration : SpheneConfigurationBase
     public bool EnableR2BackfillOnStartup { get; set; } = false;
     public int R2BackfillMaxFilesPerStartup { get; set; } = 0;
     public int R2BackfillParallelism { get; set; } = 4;
+    public bool R2CleanupEnabled { get; set; } = false;
+    public int R2ObjectRetentionDays { get; set; } = 90;
+    public int R2CleanupIntervalHours { get; set; } = 24;
     public ShardConfiguration? ShardConfiguration { get; set; } = null;
     public override string ToString()
     {
@@ -60,6 +63,9 @@ public class StaticFilesServerConfiguration : SpheneConfigurationBase
         sb.AppendLine($"{nameof(EnableR2BackfillOnStartup)} => {EnableR2BackfillOnStartup}");
         sb.AppendLine($"{nameof(R2BackfillMaxFilesPerStartup)} => {R2BackfillMaxFilesPerStartup}");
         sb.AppendLine($"{nameof(R2BackfillParallelism)} => {R2BackfillParallelism}");
+        sb.AppendLine($"{nameof(R2CleanupEnabled)} => {R2CleanupEnabled}");
+        sb.AppendLine($"{nameof(R2ObjectRetentionDays)} => {R2ObjectRetentionDays}");
+        sb.AppendLine($"{nameof(R2CleanupIntervalHours)} => {R2CleanupIntervalHours}");
         return sb.ToString();
     }
 }

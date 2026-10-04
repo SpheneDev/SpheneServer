@@ -164,7 +164,7 @@ public class Startup
         if (endpoint is IPEndPoint ipEndPoint) { address = ipEndPoint.Address.ToString(); port = ipEndPoint.Port; }
         var redisConfiguration = new RedisConfiguration()
         {
-            AbortOnConnectFail = true,
+            AbortOnConnectFail = false,
             KeyPrefix = "",
             Hosts = new RedisHost[]
             {

@@ -137,6 +137,35 @@ public class DiscordBotServices
         return true;
     }
 
+    public async Task AddSupporterRoleAsync(ulong discordId)
+    {
+        var supporterRole = _configuration.GetValueOrDefault<ulong?>(nameof(ServicesConfiguration.DiscordRoleSupporter), null);
+        if (supporterRole == null || _guild == null) return;
+        var restUser = await _guild.GetUserAsync(discordId).ConfigureAwait(false);
+        if (restUser == null) return;
+        if (restUser.RoleIds.Contains(supporterRole.Value)) return;
+        await RetryAsync(restUser.AddRoleAsync(supporterRole.Value), restUser, "Add Supporter Role").ConfigureAwait(false);
+    }
+
+    public async Task RemoveSupporterRoleAsync(ulong discordId)
+    {
+        var supporterRole = _configuration.GetValueOrDefault<ulong?>(nameof(ServicesConfiguration.DiscordRoleSupporter), null);
+        if (supporterRole == null || _guild == null) return;
+        var restUser = await _guild.GetUserAsync(discordId).ConfigureAwait(false);
+        if (restUser == null) return;
+        if (!restUser.RoleIds.Contains(supporterRole.Value)) return;
+        await RetryAsync(restUser.RemoveRoleAsync(supporterRole.Value), restUser, "Remove Supporter Role").ConfigureAwait(false);
+    }
+
+    public async Task<bool> HasSupporterRoleAsync(ulong discordId)
+    {
+        var supporterRole = _configuration.GetValueOrDefault<ulong?>(nameof(ServicesConfiguration.DiscordRoleSupporter), null);
+        if (supporterRole == null || _guild == null) return false;
+        var restUser = await _guild.GetUserAsync(discordId).ConfigureAwait(false);
+        if (restUser == null) return false;
+        return restUser.RoleIds.Contains(supporterRole.Value);
+    }
+
     public async Task KickUserAsync(RestGuildUser user)
     {
         await RetryAsync(user.KickAsync("No registration found"), user, "Kick").ConfigureAwait(false);
@@ -172,4 +201,6 @@ public class DiscordBotServices
     {
         _guild = guild;
     }
+
+    public RestGuild? GetGuild() => _guild;
 }

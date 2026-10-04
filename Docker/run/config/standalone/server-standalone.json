@@ -38,6 +38,7 @@
                                           ""
                                       ],
                    "RedisConnectionString":  "redis:6379,password=secretredispassword,abortConnect=false",
+                   "RedisPool": 5,
                    "CdnFullUrl":  "http://sphene-files:6200",
                    "FileServerFallbackAddress":  "",
                    "MaxExistingGroupsByUser":  6,
