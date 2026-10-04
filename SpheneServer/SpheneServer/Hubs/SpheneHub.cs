@@ -54,6 +54,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private SpheneDbContext DbContext => _dbContextLazy.Value;
     private readonly int _maxCharaDataByUser;
     private readonly int _maxCharaDataByUserVanity;
+    private readonly bool _supporterFeaturesEnabled;
 
     public SpheneHub(SpheneMetrics SpheneMetrics,
         IDbContextFactory<SpheneDbContext> spheneDbContextFactory, ILogger<SpheneHub> logger, SystemInfoService systemInfoService,
@@ -73,6 +74,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         _minimumClientVersion = configuration.GetValueOrDefault(nameof(ServerConfiguration.MinimumClientVersion), new Version(0, 0, 0));
         _maxCharaDataByUser = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUser), 10);
         _maxCharaDataByUserVanity = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUserVanity), 50);
+        _supporterFeaturesEnabled = configuration.GetValueOrDefault(nameof(ServerConfiguration.EnableSupporterFeatures), false);
         _contextAccessor = contextAccessor;
         _redis = redisDb;
         _onlineSyncedPairCacheService = onlineSyncedPairCacheService;
@@ -149,6 +151,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
                 FileServerFallbackAddress = _fileServerFallbackAddress,
                 MaxCharaData = _maxCharaDataByUser,
                 MaxCharaDataVanity = _maxCharaDataByUserVanity,
+                SupporterFeaturesEnabled = _supporterFeaturesEnabled,
             },
             DefaultPreferredPermissions = new DefaultPermissionsDto()
             {
