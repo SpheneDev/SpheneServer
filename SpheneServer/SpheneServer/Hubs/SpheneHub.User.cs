@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -20,6 +21,7 @@ public partial class SpheneHub
 {
     private static readonly string[] AllowedExtensionsForGamePaths = { ".mdl", ".tex", ".mtrl", ".tmb", ".pap", ".avfx", ".atex", ".sklb", ".eid", ".phyb", ".pbd", ".scd", ".skp", ".shpk" };
     private static readonly Dictionary<string, bool> PenumbraReceivePreferences = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, SupporterStyleDto> SupporterStyles = new(StringComparer.Ordinal);
 
     [Authorize(Policy = "Identified")]
     public async Task UserAddPair(UserDto dto)
@@ -229,7 +231,7 @@ public partial class SpheneHub
             {
                 otherAllowsMods = pref;
             }
-            return new UserFullPairDto(new UserData(p.Key, p.Value.Alias),
+            return new UserFullPairDto(new UserData(p.Key, p.Value.Alias, p.Value.IsSupporter),
                 p.Value.ToIndividualPairStatus(),
                 p.Value.GIDs.Where(g => !string.Equals(g, Constants.IndividualKeyword, StringComparison.OrdinalIgnoreCase)).ToList(),
                 p.Value.OwnPermissions.ToUserPermissions(setSticky: true),
@@ -237,6 +239,7 @@ public partial class SpheneHub
                 otherAllowsMods)
             {
                 IsOutgoingIndividualPair = p.Value.IsOutgoingIndividualPair,
+                OtherSupporterStyle = _supporterFeaturesEnabled && SupporterStyles.TryGetValue(p.Key, out var supporterStyle) ? supporterStyle : null,
                 RemoteClientVersion = GetKnownClientVersion(p.Key)
             };
         }).ToList();
@@ -248,6 +251,138 @@ public partial class SpheneHub
         _logger.LogCallInfo(SpheneHubLogger.Args("AllowReceivingPenumbraMods", allowMods));
         PenumbraReceivePreferences[UserUID] = allowMods;
         return NotifyPairedUsersAboutPenumbraPreferenceAsync(allowMods);
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task UserUpdateSupporterStyle(SupporterStyleDto? style)
+    {
+        _logger.LogCallInfo();
+
+        if (style == null)
+        {
+            SupporterStyles.Remove(UserUID);
+        }
+        else
+        {
+            SupporterStyles[UserUID] = style;
+        }
+
+        await NotifyPairedUsersAboutSupporterStyleAsync().ConfigureAwait(false);
+    }
+
+    private async Task NotifyPairedUsersAboutSupporterStyleAsync()
+    {
+        var pairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+        if (pairedUsers.Count == 0)
+        {
+            return;
+        }
+
+        var dto = new UserSupporterStyleDto(new UserData(UserUID),
+            SupporterStyles.TryGetValue(UserUID, out var style) ? style : null);
+        await Clients.Users(pairedUsers).Client_UserSupporterStyleUpdate(dto).ConfigureAwait(false);
+    }
+
+    private sealed record SupporterIconFile(string Path, string Name, bool Animated);
+    private const int MaxSupporterIconBytes = 2 * 1024 * 1024;
+    private static readonly TimeSpan SupporterIconCatalogTtl = TimeSpan.FromMinutes(1);
+    private static readonly HashSet<string> SupporterIconExtensions = new(StringComparer.OrdinalIgnoreCase) { ".png", ".gif", ".webp", ".apng" };
+    private static readonly HashSet<string> SupporterAnimatedIconExtensions = new(StringComparer.OrdinalIgnoreCase) { ".gif", ".webp", ".apng" };
+    private static readonly ConcurrentDictionary<string, byte[]> SupporterIconBytes = new(StringComparer.Ordinal);
+    private static readonly System.Threading.Lock SupporterIconCatalogLock = new();
+    private static Dictionary<string, SupporterIconFile>? _supporterIconCatalog;
+    private static DateTime _supporterIconCatalogBuiltAt = DateTime.MinValue;
+
+    private Dictionary<string, SupporterIconFile> GetSupporterIconCatalog()
+    {
+        var now = DateTime.UtcNow;
+        lock (SupporterIconCatalogLock)
+        {
+            if (_supporterIconCatalog != null && now - _supporterIconCatalogBuiltAt < SupporterIconCatalogTtl)
+            {
+                return _supporterIconCatalog;
+            }
+
+            var catalog = new Dictionary<string, SupporterIconFile>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_supporterIconDirectory) && Directory.Exists(_supporterIconDirectory))
+                {
+                    foreach (var file in Directory.EnumerateFiles(_supporterIconDirectory))
+                    {
+                        var fileName = Path.GetFileName(file);
+                        var ext = Path.GetExtension(fileName);
+                        if (!SupporterIconExtensions.Contains(ext))
+                        {
+                            continue;
+                        }
+
+                        catalog[fileName] = new SupporterIconFile(file,
+                            Path.GetFileNameWithoutExtension(fileName),
+                            SupporterAnimatedIconExtensions.Contains(ext));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogCallWarning(SpheneHubLogger.Args("Supporter icon catalog scan failed", ex.Message));
+            }
+
+            _supporterIconCatalog = catalog;
+            _supporterIconCatalogBuiltAt = now;
+            return catalog;
+        }
+    }
+
+    [Authorize(Policy = "Identified")]
+    public Task<List<SupporterIconInfoDto>> SupporterGetIcons()
+    {
+        var icons = new List<SupporterIconInfoDto>();
+        if (_supporterFeaturesEnabled)
+        {
+            foreach (var kvp in GetSupporterIconCatalog())
+            {
+                icons.Add(new SupporterIconInfoDto { Id = kvp.Key, Name = kvp.Value.Name, Animated = kvp.Value.Animated });
+            }
+            icons.Sort(static (a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        }
+        return Task.FromResult(icons);
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task<byte[]?> SupporterGetIconFile(string iconId)
+    {
+        if (!_supporterFeaturesEnabled || string.IsNullOrWhiteSpace(iconId))
+        {
+            return null;
+        }
+        if (!string.Equals(Path.GetFileName(iconId), iconId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+        if (!GetSupporterIconCatalog().TryGetValue(iconId, out var file))
+        {
+            return null;
+        }
+        if (SupporterIconBytes.TryGetValue(iconId, out var cached))
+        {
+            return cached;
+        }
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(file.Path).ConfigureAwait(false);
+            if (bytes.Length == 0 || bytes.Length > MaxSupporterIconBytes)
+            {
+                return null;
+            }
+            SupporterIconBytes[iconId] = bytes;
+            return bytes;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCallWarning(SpheneHubLogger.Args("Supporter icon read failed", iconId, ex.Message));
+            return null;
+        }
     }
 
     private async Task NotifyPairedUsersAboutPenumbraPreferenceAsync(bool allowMods)
@@ -280,7 +415,16 @@ public partial class SpheneHub
         if (data.FlaggedForReport) return new UserProfileDto(user.User, true, null, null, "This profile is flagged for report and pending evaluation");
         if (data.ProfileDisabled) return new UserProfileDto(user.User, true, null, null, "This profile was permanently disabled");
 
-        return new UserProfileDto(user.User, false, data.IsNSFW, data.Base64ProfileImage, data.UserDescription);
+        var isSelf = string.Equals(user.User.UID, UserUID, StringComparison.Ordinal);
+        var vis = (ProfileVisibility)data.ProfileVisibility;
+        var show = (ProfileVisibility flag) => isSelf || !vis.HasFlag(flag);
+        return new UserProfileDto(user.User, false, data.IsNSFW,
+            show(ProfileVisibility.HideProfilePicture) ? data.Base64ProfileImage : null,
+            show(ProfileVisibility.HideDescription) ? data.UserDescription : null,
+            show(ProfileVisibility.HideStatusMessage) ? data.StatusMessage : null,
+            show(ProfileVisibility.HideTags) ? data.ProfileTags : null,
+            show(ProfileVisibility.HideBanner) ? data.Base64BannerImage : null,
+            data.ProfileTheme, data.ProfileVisibility, data.Base64RowImage);
     }
 
     [Authorize(Policy = "Identified")]
@@ -818,6 +962,57 @@ public partial class SpheneHub
             }
         }
 
+        if (!string.IsNullOrEmpty(dto.BannerImageBase64))
+        {
+            byte[] bannerData = Convert.FromBase64String(dto.BannerImageBase64);
+            using MemoryStream ms = new(bannerData);
+            var format = await Image.DetectFormatAsync(ms).ConfigureAwait(false);
+            if (!format.FileExtensions.Contains("png", StringComparer.OrdinalIgnoreCase))
+            {
+                await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Your provided banner file is not in PNG format").ConfigureAwait(false);
+                return;
+            }
+            using var banner = Image.Load<Rgba32>(bannerData);
+
+            if (banner.Width > 1200 || banner.Height > 400 || (bannerData.Length > 400 * 1024))
+            {
+                await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Your provided banner image is larger than 1200x400 or more than 400KiB.").ConfigureAwait(false);
+                return;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(dto.Theme) && dto.Theme.Length > 2048)
+        {
+            await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Your profile theme data is too large.").ConfigureAwait(false);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(dto.RowImageBase64))
+        {
+            var isSupporter = await DbContext.Users.Where(u => u.UID == UserUID)
+                .Select(u => u.IsSupporter).SingleOrDefaultAsync().ConfigureAwait(false);
+            if (!isSupporter)
+            {
+                await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Animated row backgrounds are a supporter feature.").ConfigureAwait(false);
+                return;
+            }
+            byte[] rowData = Convert.FromBase64String(dto.RowImageBase64);
+            using MemoryStream ms = new(rowData);
+            var format = await Image.DetectFormatAsync(ms).ConfigureAwait(false);
+            if (!format.FileExtensions.Contains("png", StringComparer.OrdinalIgnoreCase)
+                && !format.FileExtensions.Contains("gif", StringComparer.OrdinalIgnoreCase))
+            {
+                await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Your row image must be a PNG or GIF file").ConfigureAwait(false);
+                return;
+            }
+            using var rowImage = Image.Load<Rgba32>(rowData);
+            if (rowImage.Width > 512 || rowImage.Height > 128 || (rowData.Length > 400 * 1024))
+            {
+                await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Your row image is larger than 512x128 or more than 400KiB.").ConfigureAwait(false);
+                return;
+            }
+        }
+
         if (existingData != null)
         {
             if (string.Equals("", dto.ProfilePictureBase64, StringComparison.OrdinalIgnoreCase))
@@ -838,6 +1033,44 @@ public partial class SpheneHub
             {
                 existingData.UserDescription = dto.Description;
             }
+
+            if (dto.StatusMessage != null)
+            {
+                existingData.StatusMessage = dto.StatusMessage;
+            }
+
+            if (dto.Tags != null)
+            {
+                existingData.ProfileTags = dto.Tags;
+            }
+
+            if (string.Equals("", dto.BannerImageBase64, StringComparison.OrdinalIgnoreCase))
+            {
+                existingData.Base64BannerImage = null;
+            }
+            else if (dto.BannerImageBase64 != null)
+            {
+                existingData.Base64BannerImage = dto.BannerImageBase64;
+            }
+
+            if (dto.Theme != null)
+            {
+                existingData.ProfileTheme = dto.Theme;
+            }
+
+            if (dto.Visibility != null)
+            {
+                existingData.ProfileVisibility = dto.Visibility.Value & 0x1F;
+            }
+
+            if (string.Equals("", dto.RowImageBase64, StringComparison.OrdinalIgnoreCase))
+            {
+                existingData.Base64RowImage = null;
+            }
+            else if (dto.RowImageBase64 != null)
+            {
+                existingData.Base64RowImage = dto.RowImageBase64;
+            }
         }
         else
         {
@@ -846,6 +1079,12 @@ public partial class SpheneHub
                 UserUID = dto.User.UID,
                 Base64ProfileImage = dto.ProfilePictureBase64 ?? null,
                 UserDescription = dto.Description ?? null,
+                StatusMessage = dto.StatusMessage ?? null,
+                ProfileTags = dto.Tags ?? null,
+                Base64BannerImage = dto.BannerImageBase64 ?? null,
+                Base64RowImage = dto.RowImageBase64 ?? null,
+                ProfileTheme = dto.Theme ?? null,
+                ProfileVisibility = (dto.Visibility ?? 0) & 0x1F,
                 IsNSFW = dto.IsNSFW ?? false
             };
 

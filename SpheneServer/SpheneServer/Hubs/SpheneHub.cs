@@ -55,6 +55,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private readonly int _maxCharaDataByUser;
     private readonly int _maxCharaDataByUserVanity;
     private readonly bool _supporterFeaturesEnabled;
+    private readonly string _supporterIconDirectory;
 
     public SpheneHub(SpheneMetrics SpheneMetrics,
         IDbContextFactory<SpheneDbContext> spheneDbContextFactory, ILogger<SpheneHub> logger, SystemInfoService systemInfoService,
@@ -75,6 +76,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         _maxCharaDataByUser = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUser), 10);
         _maxCharaDataByUserVanity = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUserVanity), 50);
         _supporterFeaturesEnabled = configuration.GetValueOrDefault(nameof(ServerConfiguration.EnableSupporterFeatures), false);
+        _supporterIconDirectory = configuration.GetValueOrDefault(nameof(ServerConfiguration.SupporterIconDirectory), "supporter-icons");
         _contextAccessor = contextAccessor;
         _redis = redisDb;
         _onlineSyncedPairCacheService = onlineSyncedPairCacheService;

@@ -39,6 +39,9 @@ public class ServerConfiguration : SpheneConfigurationBase
 
     [RemoteConfiguration]
     public bool EnableSupporterFeatures { get; set; } = false;
+
+    [RemoteConfiguration]
+    public string SupporterIconDirectory { get; set; } = "supporter-icons";
     public bool RunPermissionCleanupOnStartup { get; set; } = true;
     public int HubExecutionConcurrencyFilter { get; set; } = 50;
 
@@ -56,6 +59,7 @@ public class ServerConfiguration : SpheneConfigurationBase
         sb.AppendLine($"{nameof(PurgeUnusedAccounts)} => {PurgeUnusedAccounts}");
         sb.AppendLine($"{nameof(PurgeUnusedAccountsPeriodInDays)} => {PurgeUnusedAccountsPeriodInDays}");
         sb.AppendLine($"{nameof(EnableSupporterFeatures)} => {EnableSupporterFeatures}");
+        sb.AppendLine($"{nameof(SupporterIconDirectory)} => {SupporterIconDirectory}");
         sb.AppendLine($"{nameof(RunPermissionCleanupOnStartup)} => {RunPermissionCleanupOnStartup}");
         sb.AppendLine($"{nameof(HubExecutionConcurrencyFilter)} => {HubExecutionConcurrencyFilter}");
         return sb.ToString();

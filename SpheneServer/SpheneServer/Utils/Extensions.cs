@@ -15,7 +15,7 @@ public static class Extensions
 
     public static UserData ToUserData(this GroupPair pair)
     {
-        return new UserData(pair.GroupUser.UID, pair.GroupUser.Alias);
+        return new UserData(pair.GroupUser.UID, pair.GroupUser.Alias, pair.GroupUser.IsSupporter);
     }
 
     public static UserData ToUserData(this User user)

@@ -335,6 +335,7 @@ public partial class SpheneHub
                          UserUID = user.UserUID,
                          OtherUserUID = user.OtherUserUID,
                          OtherUserAlias = u.Alias,
+                         OtherUserIsSupporter = u.IsSupporter,
                          GID = user.Gid,
                          Synced = user.Synced,
                          OwnPermissions = ownperm,
@@ -353,7 +354,8 @@ public partial class SpheneHub
             resultList.Select(p => string.IsNullOrEmpty(p.GID) ? Constants.IndividualKeyword : p.GID).ToList(),
             resultList[0].OwnPermissions,
             resultList[0].OtherPermissions,
-            resultList.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair));
+            resultList.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair),
+            resultList[0].OtherUserIsSupporter);
     }
 
     private async Task<Dictionary<string, UserInfo>> GetAllPairInfo(string uid)
@@ -447,6 +449,7 @@ public partial class SpheneHub
                          UserUID = user.UserUID,
                          OtherUserUID = user.OtherUserUID,
                          OtherUserAlias = u.Alias,
+                         OtherUserIsSupporter = u.IsSupporter,
                          GID = user.Gid,
                          Synced = user.Synced,
                          OwnPermissions = ownperm,
@@ -463,7 +466,8 @@ public partial class SpheneHub
                 g.Select(p => string.IsNullOrEmpty(p.GID) ? Constants.IndividualKeyword : p.GID).ToList(),
                 g.First().OwnPermissions,
                 g.First().OtherPermissions,
-                g.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair));
+                g.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair),
+                g.First().OtherUserIsSupporter);
         }, StringComparer.Ordinal);
     }
 
@@ -539,5 +543,5 @@ public partial class SpheneHub
         }
     }
 
-    public record UserInfo(string Alias, bool IndividuallyPaired, bool IsSynced, List<string> GIDs, UserPermissionSet? OwnPermissions, UserPermissionSet? OtherPermissions, bool IsOutgoingIndividualPair);
+    public record UserInfo(string Alias, bool IndividuallyPaired, bool IsSynced, List<string> GIDs, UserPermissionSet? OwnPermissions, UserPermissionSet? OtherPermissions, bool IsOutgoingIndividualPair, bool IsSupporter);
 }

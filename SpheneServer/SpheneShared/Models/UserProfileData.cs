@@ -13,6 +13,18 @@ public class UserProfileData
 
     public string UserDescription { get; set; }
 
+    public string StatusMessage { get; set; }
+
+    public string ProfileTags { get; set; }
+
+    public string Base64BannerImage { get; set; }
+
+    public string Base64RowImage { get; set; }
+
+    public string ProfileTheme { get; set; }
+
+    public int ProfileVisibility { get; set; }
+
     [Required]
     [Key]
     [ForeignKey(nameof(User))]

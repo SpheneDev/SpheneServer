@@ -1362,9 +1362,17 @@ namespace SpheneServer.Migrations
                         .HasColumnType("character varying(10)")
                         .HasColumnName("user_uid");
 
+                    b.Property<string>("Base64BannerImage")
+                        .HasColumnType("text")
+                        .HasColumnName("base64banner_image");
+
                     b.Property<string>("Base64ProfileImage")
                         .HasColumnType("text")
                         .HasColumnName("base64profile_image");
+
+                    b.Property<string>("Base64RowImage")
+                        .HasColumnType("text")
+                        .HasColumnName("base64row_image");
 
                     b.Property<bool>("FlaggedForReport")
                         .HasColumnType("boolean")
@@ -1377,6 +1385,22 @@ namespace SpheneServer.Migrations
                     b.Property<bool>("ProfileDisabled")
                         .HasColumnType("boolean")
                         .HasColumnName("profile_disabled");
+
+                    b.Property<string>("ProfileTags")
+                        .HasColumnType("text")
+                        .HasColumnName("profile_tags");
+
+                    b.Property<string>("ProfileTheme")
+                        .HasColumnType("text")
+                        .HasColumnName("profile_theme");
+
+                    b.Property<int>("ProfileVisibility")
+                        .HasColumnType("integer")
+                        .HasColumnName("profile_visibility");
+
+                    b.Property<string>("StatusMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("status_message");
 
                     b.Property<string>("UserDescription")
                         .HasColumnType("text")
