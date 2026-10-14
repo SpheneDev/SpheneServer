@@ -71,7 +71,6 @@ public class SpheneDbContext : DbContext
     public DbSet<ModDownloadHistory> ModDownloadHistory { get; set; }
     public DbSet<ModShareHistory> ModShareHistory { get; set; }
     public DbSet<PendingFileTransfer> PendingFileTransfers { get; set; }
-    public DbSet<PenumbraModBackup> PenumbraModBackups { get; set; }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -211,10 +210,5 @@ public class SpheneDbContext : DbContext
         mb.Entity<PendingFileTransfer>().ToTable("pending_file_transfers");
         mb.Entity<PendingFileTransfer>().HasKey(p => p.Id);
         mb.Entity<PendingFileTransfer>().HasIndex(p => p.RecipientUID);
-
-        mb.Entity<PenumbraModBackup>().ToTable("penumbra_mod_backups");
-        mb.Entity<PenumbraModBackup>().HasKey(b => b.BackupId);
-        mb.Entity<PenumbraModBackup>().HasIndex(b => b.UserUID);
-        mb.Entity<PenumbraModBackup>().HasIndex(b => b.CreatedAt);
     }
 }

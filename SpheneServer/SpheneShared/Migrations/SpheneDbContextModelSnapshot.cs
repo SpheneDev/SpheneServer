@@ -1034,50 +1034,6 @@ namespace SpheneServer.Migrations
                     b.ToTable("pending_file_transfers", (string)null);
                 });
 
-            modelBuilder.Entity("SpheneShared.Models.PenumbraModBackup", b =>
-                {
-                    b.Property<Guid>("BackupId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("backup_id");
-
-                    b.Property<string>("BackupName")
-                        .HasColumnType("text")
-                        .HasColumnName("backup_name");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<bool>("IsComplete")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_complete");
-
-                    b.Property<int>("ModCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("mod_count");
-
-                    b.Property<List<PenumbraModBackupEntryDto>>("Mods")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("mods");
-
-                    b.Property<string>("UserUID")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("user_uid");
-
-                    b.HasKey("BackupId")
-                        .HasName("pk_penumbra_mod_backups");
-
-                    b.HasIndex("CreatedAt")
-                        .HasDatabaseName("ix_penumbra_mod_backups_created_at");
-
-                    b.HasIndex("UserUID")
-                        .HasDatabaseName("ix_penumbra_mod_backups_user_uid");
-
-                    b.ToTable("penumbra_mod_backups", (string)null);
-                });
-
             modelBuilder.Entity("SpheneShared.Models.SyncshellWelcomePage", b =>
                 {
                     b.Property<string>("GroupGID")
