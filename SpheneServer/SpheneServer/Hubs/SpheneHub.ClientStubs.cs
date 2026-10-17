@@ -71,5 +71,6 @@ namespace SpheneServer.Hubs
         public Task Client_UserSupporterStyleUpdate(UserSupporterStyleDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_UserCharacterDataRefreshRequested(UserData requester) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_UserUpdateSupporterStatus(bool isSupporter) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_UserIdentityUpdated(UserDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     }
 }

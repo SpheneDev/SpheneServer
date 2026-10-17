@@ -96,8 +96,8 @@ public partial class SpheneHub
                 }
                 else
                 {
-                    await Clients.User(UserUID).Client_UserSendOnline(new(new(user.Key), otherCharaIdent, GetKnownClientVersion(user.Key))).ConfigureAwait(false);
-                    await Clients.User(user.Key).Client_UserSendOnline(new(new(UserUID), UserCharaIdent, GetKnownClientVersion(UserUID))).ConfigureAwait(false);
+                    await Clients.User(UserUID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(new(user.Key), otherCharaIdent).ConfigureAwait(false)).ConfigureAwait(false);
+                    await Clients.User(user.Key).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(new(UserUID), UserCharaIdent).ConfigureAwait(false)).ConfigureAwait(false);
                 }
             }
         }
@@ -157,14 +157,14 @@ public partial class SpheneHub
                     // if we changed to paused and other was not paused before, we send offline
                     if (groupPreferredPermissions.IsPaused)
                     {
-                        await Clients.User(UserUID).Client_UserSendOffline(new(new(groupUserPair.Key, groupUserPair.Value.Alias))).ConfigureAwait(false);
+                        await Clients.User(UserUID).Client_UserSendOffline(new(new(groupUserPair.Key, groupUserPair.Value.Alias, groupUserPair.Value.IsSupporter, groupUserPair.Value.DisplayName))).ConfigureAwait(false);
                         await Clients.User(groupUserPair.Key).Client_UserSendOffline(new(new(UserUID))).ConfigureAwait(false);
                     }
                     // if we changed to unpaused and other was not paused either we send online
                     else
                     {
-                        await Clients.User(UserUID).Client_UserSendOnline(new(new(groupUserPair.Key, groupUserPair.Value.Alias), groupUserIdent, GetKnownClientVersion(groupUserPair.Key))).ConfigureAwait(false);
-                        await Clients.User(groupUserPair.Key).Client_UserSendOnline(new(new(UserUID), UserCharaIdent, GetKnownClientVersion(UserUID))).ConfigureAwait(false);
+                        await Clients.User(UserUID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(new(groupUserPair.Key, groupUserPair.Value.Alias, groupUserPair.Value.IsSupporter, groupUserPair.Value.DisplayName), groupUserIdent).ConfigureAwait(false)).ConfigureAwait(false);
+                        await Clients.User(groupUserPair.Key).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(new(UserUID), UserCharaIdent).ConfigureAwait(false)).ConfigureAwait(false);
                     }
                 }
             }

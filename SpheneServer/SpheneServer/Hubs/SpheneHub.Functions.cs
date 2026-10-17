@@ -4,6 +4,7 @@ using SpheneServer.Utils;
 using SpheneShared.Utils;
 using Sphene.API.Data;
 using Sphene.API.Dto.Group;
+using Sphene.API.Dto.User;
 using SpheneShared.Metrics;
 using Microsoft.AspNetCore.SignalR;
 
@@ -105,9 +106,33 @@ public partial class SpheneHub
         return await _redis.GetAsync<string>("UID:" + uid).ConfigureAwait(false);
     }
 
+    private string GposeStateKey => $"GposeState:{UserUID}";
+
+    private static string GposeStateKeyFor(string uid) => $"GposeState:{uid}";
+
+    private async Task<OnlineUserIdentDto> CreateOnlineIdentDtoAsync(UserData user, string ident)
+    {
+        var gposeFlag = await _redis.GetAsync<string>(GposeStateKeyFor(user.UID)).ConfigureAwait(false);
+        return new(user, ident, GetKnownClientVersion(user.UID), string.Equals(gposeFlag, "1", StringComparison.Ordinal));
+    }
+
+    private async Task<HashSet<string>> GetUsersInGpose(IEnumerable<string> uids)
+    {
+        var uidList = uids.ToList();
+        var states = await _redis.GetAllAsync<string>(uidList.Select(GposeStateKeyFor).ToHashSet(StringComparer.Ordinal)).ConfigureAwait(false);
+        var gposed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var uid in uidList)
+        {
+            if (states.TryGetValue(GposeStateKeyFor(uid), out var flag) && string.Equals(flag, "1", StringComparison.Ordinal))
+                gposed.Add(uid);
+        }
+        return gposed;
+    }
+
     private async Task RemoveUserFromRedis()
     {
         await _redis.RemoveAsync("UID:" + UserUID, StackExchange.Redis.CommandFlags.FireAndForget).ConfigureAwait(false);
+        await _redis.RemoveAsync(GposeStateKey, StackExchange.Redis.CommandFlags.FireAndForget).ConfigureAwait(false);
     }
 
     private async Task SendGroupDeletedToAll(List<GroupPair> groupUsers)
@@ -139,7 +164,7 @@ public partial class SpheneHub
     {
         var usersToSendDataTo = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
         var self = await DbContext.Users.AsNoTracking().SingleAsync(u => u.UID == UserUID).ConfigureAwait(false);
-        await Clients.Users(usersToSendDataTo).Client_UserSendOnline(new(self.ToUserData(), UserCharaIdent, GetKnownClientVersion(UserUID))).ConfigureAwait(false);
+        await Clients.Users(usersToSendDataTo).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(self.ToUserData(), UserCharaIdent).ConfigureAwait(false)).ConfigureAwait(false);
 
         return usersToSendDataTo;
     }
@@ -336,6 +361,7 @@ public partial class SpheneHub
                          OtherUserUID = user.OtherUserUID,
                          OtherUserAlias = u.Alias,
                          OtherUserIsSupporter = u.IsSupporter,
+                         OtherUserDisplayName = u.DisplayName,
                          GID = user.Gid,
                          Synced = user.Synced,
                          OwnPermissions = ownperm,
@@ -355,7 +381,8 @@ public partial class SpheneHub
             resultList[0].OwnPermissions,
             resultList[0].OtherPermissions,
             resultList.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair),
-            resultList[0].OtherUserIsSupporter);
+            resultList[0].OtherUserIsSupporter,
+            resultList[0].OtherUserDisplayName);
     }
 
     private async Task<Dictionary<string, UserInfo>> GetAllPairInfo(string uid)
@@ -450,6 +477,7 @@ public partial class SpheneHub
                          OtherUserUID = user.OtherUserUID,
                          OtherUserAlias = u.Alias,
                          OtherUserIsSupporter = u.IsSupporter,
+                         OtherUserDisplayName = u.DisplayName,
                          GID = user.Gid,
                          Synced = user.Synced,
                          OwnPermissions = ownperm,
@@ -467,7 +495,8 @@ public partial class SpheneHub
                 g.First().OwnPermissions,
                 g.First().OtherPermissions,
                 g.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair),
-                g.First().OtherUserIsSupporter);
+                g.First().OtherUserIsSupporter,
+                g.First().OtherUserDisplayName);
         }, StringComparer.Ordinal);
     }
 
@@ -543,5 +572,5 @@ public partial class SpheneHub
         }
     }
 
-    public record UserInfo(string Alias, bool IndividuallyPaired, bool IsSynced, List<string> GIDs, UserPermissionSet? OwnPermissions, UserPermissionSet? OtherPermissions, bool IsOutgoingIndividualPair, bool IsSupporter);
+    public record UserInfo(string Alias, bool IndividuallyPaired, bool IsSynced, List<string> GIDs, UserPermissionSet? OwnPermissions, UserPermissionSet? OtherPermissions, bool IsOutgoingIndividualPair, bool IsSupporter, string? DisplayName);
 }

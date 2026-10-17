@@ -36,7 +36,20 @@ public partial class SpheneWizardModule
             return;
         }
 
-        var (uid, key) = await HandleAddSecondaryUser(db, existingAuth.User.UID).ConfigureAwait(false);
+        var primaryUid = existingAuth.User.UID;
+        var ownedUidCount = await db.Auth
+            .CountAsync(a => a.UserUID == primaryUid || a.PrimaryUserUID == primaryUid).ConfigureAwait(false);
+        if (ownedUidCount >= MaxUidsPerDiscordAccount)
+        {
+            eb.WithTitle("Soul fragment limit reached");
+            eb.WithDescription($"Your account already has the maximum of {MaxUidsPerDiscordAccount} UIDs. Sever an existing secondary soul fragment first if you need a new one.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var (uid, key) = await HandleAddSecondaryUser(db, primaryUid).ConfigureAwait(false);
         eb.WithColor(Color.Green);
         eb.WithTitle($"Secondary soul fragment created, your UID: {uid}");
         eb.WithDescription("This is your private electrope key. Do not share this electrope key with anyone. **If you lose it, it is irrevocably lost.**"

@@ -1104,6 +1104,15 @@ namespace SpheneServer.Migrations
                         .HasColumnType("character varying(15)")
                         .HasColumnName("alias");
 
+                    b.Property<DateTime?>("AliasChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("alias_changed_at");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("display_name");
+
                     b.Property<bool>("IsAdmin")
                         .HasColumnType("boolean")
                         .HasColumnName("is_admin");

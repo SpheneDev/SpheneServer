@@ -701,7 +701,7 @@ public partial class SpheneHub
         {
             AccessType = GetAccessTypeDto(charaData.AccessType),
             ShareType = GetShareTypeDto(charaData.ShareType),
-            AllowedUsers = [.. charaData.AllowedIndividiuals.Where(k => !string.IsNullOrEmpty(k.AllowedUserUID)).Select(u => new UserData(u.AllowedUser.UID, u.AllowedUser.Alias))],
+            AllowedUsers = [.. charaData.AllowedIndividiuals.Where(k => !string.IsNullOrEmpty(k.AllowedUserUID)).Select(u => new UserData(u.AllowedUser.UID, u.AllowedUser.Alias, u.AllowedUser.IsSupporter, u.AllowedUser.DisplayName))],
             AllowedGroups = [.. charaData.AllowedIndividiuals.Where(k => !string.IsNullOrEmpty(k.AllowedGroupGID)).Select(k => new GroupData(k.AllowedGroup.GID, k.AllowedGroup.Alias))],
             CustomizeData = charaData.CustomizeData,
             Description = charaData.Description,

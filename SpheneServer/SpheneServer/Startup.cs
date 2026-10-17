@@ -128,6 +128,7 @@ public class Startup
             hubOptions.StreamBufferCapacity = 200;
 
             hubOptions.AddFilter<SignalRLimitFilter>();
+            hubOptions.AddFilter<OnboardingFilter>();
             hubOptions.AddFilter<ConcurrencyFilter>();
         }).AddMessagePackProtocol(opt =>
         {

@@ -19,4 +19,9 @@ public class User
     public DateTime LastLoggedIn { get; set; }
     [MaxLength(15)]
     public string Alias { get; set; }
+
+    [MaxLength(64)]
+    public string? DisplayName { get; set; }
+
+    public DateTime? AliasChangedAt { get; set; }
 }

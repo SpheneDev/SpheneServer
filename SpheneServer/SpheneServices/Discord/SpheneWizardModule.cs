@@ -14,6 +14,8 @@ namespace SpheneServices.Discord;
 
 public partial class SpheneWizardModule : InteractionModuleBase
 {
+    private const int MaxUidsPerDiscordAccount = 2;
+
     private ILogger<SpheneModule> _logger;
     private DiscordBotServices _botServices;
     private IConfigurationService<ServerConfiguration> _spheneClientConfigurationService;
@@ -142,6 +144,16 @@ public partial class SpheneWizardModule : InteractionModuleBase
             return;
         }
 
+        if (primaryAuth.User.IsAdmin != true && primaryAuth.User.IsModerator != true)
+        {
+            eb.WithTitle("Client-only");
+            eb.WithDescription("Your soul resonance identifier is managed in the Sphene client now. Open the identity settings there.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
         eb.WithTitle("Soul Identity Recalibration");
         eb.WithDescription("Select the UID you want to assign a soul resonance identifier (alias) to.");
         eb.WithColor(Color.Blue);
@@ -178,6 +190,16 @@ public partial class SpheneWizardModule : InteractionModuleBase
             return;
         }
 
+        if (primaryAuth.User.IsAdmin != true && primaryAuth.User.IsModerator != true)
+        {
+            eb.WithTitle("Unauthorized");
+            eb.WithDescription("Alias changes are performed in the Sphene client. This channel is reserved for staff.");
+            eb.WithColor(Color.Red);
+            AddHome(cb);
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
         var primaryUid = primaryAuth.User.UID;
         var isOwnedUid = string.Equals(uid, primaryUid, StringComparison.Ordinal)
                          || await spheneDb.Auth.AnyAsync(a => a.PrimaryUserUID == primaryUid && a.UserUID == uid).ConfigureAwait(false);
@@ -203,7 +225,19 @@ public partial class SpheneWizardModule : InteractionModuleBase
             return;
         }
 
-        var aliasExists = await spheneDb.Users.AnyAsync(u => u.Alias == modal.NewAlias && u.UID != user.UID).ConfigureAwait(false);
+        var newAlias = modal.NewAlias?.Trim() ?? string.Empty;
+        if (!Regex.IsMatch(newAlias, Sphene.API.Data.Constants.AliasValidationPattern))
+        {
+            eb.WithTitle("Invalid Identifier");
+            eb.WithDescription("The soul resonance identifier must be 5-15 characters: letters, digits, `.` `_` `-` — no spaces.");
+            eb.WithColor(Color.Red);
+            cb.WithButton("Try Again", "wizard-change-alias", ButtonStyle.Primary, new Emoji("✨"));
+            AddHome(cb);
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
+
+        var aliasExists = await spheneDb.Users.AnyAsync(u => u.Alias == newAlias && u.UID != user.UID).ConfigureAwait(false);
         if (aliasExists)
         {
             eb.WithTitle("Soul Identity Conflict");
@@ -215,16 +249,30 @@ public partial class SpheneWizardModule : InteractionModuleBase
             return;
         }
 
-        user.Alias = modal.NewAlias;
-        await spheneDb.SaveChangesAsync().ConfigureAwait(false);
+        user.Alias = newAlias;
+        user.AliasChangedAt = DateTime.UtcNow;
+        try
+        {
+            await spheneDb.SaveChangesAsync().ConfigureAwait(false);
+        }
+        catch (DbUpdateException)
+        {
+            eb.WithTitle("Soul Identity Conflict");
+            eb.WithDescription($"The soul resonance identifier **{newAlias}** is already in use by another entity. Please choose a different identifier.");
+            eb.WithColor(Color.Red);
+            cb.WithButton("Try Again", "wizard-change-alias", ButtonStyle.Primary, new Emoji("✨"));
+            AddHome(cb);
+            await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
+            return;
+        }
 
         eb.WithTitle("Soul Identity Recalibrated");
-        eb.WithDescription($"UID **{uid}** has been successfully recalibrated to: **{modal.NewAlias}**" + Environment.NewLine + Environment.NewLine
+        eb.WithDescription($"UID **{uid}** has been successfully recalibrated to: **{newAlias}**" + Environment.NewLine + Environment.NewLine
                            + "⚠️ **Important:** Please reconnect your Sphene Client once to activate the new identifier.");
         eb.WithColor(Color.Green);
         AddHome(cb);
         await ModifyModalInteraction(eb, cb).ConfigureAwait(false);
-        await _botServices.LogToChannel($"{Context.User.Mention} changed alias for {uid} to {modal.NewAlias}").ConfigureAwait(false);
+        await _botServices.LogToChannel($"{Context.User.Mention} changed alias for {uid} to {newAlias}").ConfigureAwait(false);
     }
 
     [ComponentInteraction("wizard-home:*")]
@@ -241,11 +289,13 @@ public partial class SpheneWizardModule : InteractionModuleBase
         bool hasAccount = await spheneDb.LodeStoneAuth.AnyAsync(u => u.DiscordId == Context.User.Id && u.StartedAt == null).ConfigureAwait(false);
         
         string currentAlias = null;
+        bool isStaff = false;
         if (hasAccount)
         {
             var existingAuth = await spheneDb.LodeStoneAuth.Include(u => u.User)
                 .SingleOrDefaultAsync(e => e.DiscordId == Context.User.Id && e.StartedAt == null).ConfigureAwait(false);
             currentAlias = existingAuth?.User?.Alias;
+            isStaff = existingAuth?.User?.IsAdmin == true || existingAuth?.User?.IsModerator == true;
         }
 
         if (init)
@@ -281,7 +331,7 @@ public partial class SpheneWizardModule : InteractionModuleBase
             + (!hasAccount ? string.Empty : ("- Check your soul resonance status press \"ℹ️ User Info\"" + Environment.NewLine))
             + (hasAccount ? string.Empty : ("- Initialize new soul connection press \"⚛ Register\"" + Environment.NewLine))
             + (hasAccount ? string.Empty : ("- Reestablish soul link to a different Discord account press \"🔗 Relink\"" + Environment.NewLine))
-            + (!hasAccount ? string.Empty : ("- Recalibrate your soul resonance identifier press \"✨ Soul Identity\"" + Environment.NewLine))
+            + (!isStaff ? string.Empty : ("- Recalibrate a soul resonance identifier press \"✨ Soul Identity\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Generate an additional soul fragment (secondary UID) press \"➕ New UID\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Generate a new electrope key press \"🔑 New Key\"" + Environment.NewLine))
             + (!hasAccount ? string.Empty : ("- Sever soul connections with \"⚠️ Delete\""));
@@ -297,7 +347,10 @@ public partial class SpheneWizardModule : InteractionModuleBase
         else
         {
             cb.WithButton("User Info", "wizard-userinfo", ButtonStyle.Secondary, new Emoji("ℹ️"));
-            cb.WithButton("Soul Identity", "wizard-change-alias", ButtonStyle.Secondary, new Emoji("✨"));
+            if (isStaff)
+            {
+                cb.WithButton("Soul Identity", "wizard-change-alias", ButtonStyle.Secondary, new Emoji("✨"));
+            }
             cb.WithButton("New UID", "wizard-newuid", ButtonStyle.Secondary, new Emoji("➕"));
             cb.WithButton("New Key", "wizard-newkey", ButtonStyle.Secondary, new Emoji("🔑"));
             cb.WithButton("Delete", "wizard-delete", ButtonStyle.Danger, new Emoji("⚠️"));

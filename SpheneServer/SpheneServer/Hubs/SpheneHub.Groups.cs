@@ -407,9 +407,17 @@ public partial class SpheneHub
 
         var banEntries = await DbContext.GroupBans.Include(b => b.BannedUser).Where(g => g.GroupGID == dto.Group.GID).AsNoTracking().ToListAsync().ConfigureAwait(false);
 
+        var bannerUids = banEntries.Select(b => b.BannedByUID).Distinct().ToList();
+        var bannerAliases = await DbContext.Users.AsNoTracking()
+            .Where(u => bannerUids.Contains(u.UID))
+            .ToDictionaryAsync(u => u.UID, u => u.Alias, StringComparer.Ordinal)
+            .ConfigureAwait(false);
+
         List<BannedGroupUserDto> bannedGroupUsers = banEntries.Select(b =>
             new BannedGroupUserDto(group.ToGroupData(), b.BannedUser.ToUserData(), b.BannedReason, b.BannedOn,
-                b.BannedByUID)).ToList();
+                bannerAliases.TryGetValue(b.BannedByUID, out var bannerAlias) && !string.IsNullOrEmpty(bannerAlias)
+                    ? bannerAlias
+                    : b.BannedByUID)).ToList();
 
         _logger.LogCallInfo(SpheneHubLogger.Args(dto, bannedGroupUsers.Count));
 
@@ -637,8 +645,8 @@ public partial class SpheneHub
                 var groupUserIdent = await GetUserIdent(pair.GroupUserUID).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(groupUserIdent))
                 {
-                    await Clients.User(UserUID).Client_UserSendOnline(new(pair.ToUserData(), groupUserIdent, GetKnownClientVersion(pair.GroupUserUID))).ConfigureAwait(false);
-                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(new(self.ToUserData(), UserCharaIdent, GetKnownClientVersion(UserUID))).ConfigureAwait(false);
+                    await Clients.User(UserUID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(pair.ToUserData(), groupUserIdent).ConfigureAwait(false)).ConfigureAwait(false);
+                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(self.ToUserData(), UserCharaIdent).ConfigureAwait(false)).ConfigureAwait(false);
                 }
             }
         }
@@ -1391,8 +1399,8 @@ public partial class SpheneHub
                 var newUserIdent = await GetUserIdent(userUID).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(groupUserIdent) && !string.IsNullOrEmpty(newUserIdent))
                 {
-                    await Clients.User(userUID).Client_UserSendOnline(new(pair.ToUserData(), groupUserIdent, GetKnownClientVersion(pair.GroupUserUID))).ConfigureAwait(false);
-                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(new(newUser.ToUserData(), newUserIdent, GetKnownClientVersion(userUID))).ConfigureAwait(false);
+                    await Clients.User(userUID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(pair.ToUserData(), groupUserIdent).ConfigureAwait(false)).ConfigureAwait(false);
+                    await Clients.User(pair.GroupUserUID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(newUser.ToUserData(), newUserIdent).ConfigureAwait(false)).ConfigureAwait(false);
                 }
             }
         }

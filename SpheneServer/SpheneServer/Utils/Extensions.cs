@@ -15,12 +15,12 @@ public static class Extensions
 
     public static UserData ToUserData(this GroupPair pair)
     {
-        return new UserData(pair.GroupUser.UID, pair.GroupUser.Alias, pair.GroupUser.IsSupporter);
+        return new UserData(pair.GroupUser.UID, pair.GroupUser.Alias, pair.GroupUser.IsSupporter, pair.GroupUser.DisplayName);
     }
 
     public static UserData ToUserData(this User user)
     {
-        return new UserData(user.UID, user.Alias, user.IsSupporter);
+        return new UserData(user.UID, user.Alias, user.IsSupporter, user.DisplayName);
     }
 
     public static IndividualPairStatus ToIndividualPairStatus(this UserInfo userInfo)

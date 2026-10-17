@@ -136,13 +136,17 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
 
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
 
-        return new ConnectionDto(new UserData(dbUser.UID, string.IsNullOrWhiteSpace(dbUser.Alias) ? null : dbUser.Alias))
+        return new ConnectionDto(new UserData(dbUser.UID, string.IsNullOrWhiteSpace(dbUser.Alias) ? null : dbUser.Alias, dbUser.IsSupporter, dbUser.DisplayName))
         {
             CurrentClientVersion = _expectedClientVersion,
             ServerVersion = ISpheneHub.ApiVersion,
             IsAdmin = dbUser.IsAdmin,
             IsModerator = dbUser.IsModerator,
             IsSupporter = dbUser.IsSupporter,
+            RequiresAliasSetup = string.IsNullOrWhiteSpace(dbUser.Alias),
+            AliasChangeAvailableAt = dbUser.AliasChangedAt.HasValue
+                ? dbUser.AliasChangedAt.Value.AddDays(Constants.AliasRenameCooldownDays)
+                : null,
             ServerInfo = new ServerInfo()
             {
                 MaxGroupsCreatedByUser = _maxExistingGroupsByUser,

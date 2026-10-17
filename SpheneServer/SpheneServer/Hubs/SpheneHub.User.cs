@@ -29,11 +29,12 @@ public partial class SpheneHub
         _logger.LogCallInfo(SpheneHubLogger.Args(dto));
 
         // don't allow adding nothing
-        var uid = dto.User.UID.Trim();
-        if (string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(dto.User.UID)) return;
+        var uid = dto.User.UID.Trim().TrimStart('@');
+        if (string.Equals(uid, UserUID, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(uid)) return;
 
         // grab other user, check if it exists and if a pair already exists
-        var otherUser = await DbContext.Users.SingleOrDefaultAsync(u => u.UID == uid || u.Alias == uid).ConfigureAwait(false);
+        var loweredUid = uid.ToLowerInvariant();
+        var otherUser = await DbContext.Users.SingleOrDefaultAsync(u => u.UID == uid || u.Alias != null && u.Alias.ToLower() == loweredUid).ConfigureAwait(false);
         if (otherUser == null)
         {
             await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Warning, $"Cannot pair with {dto.User.UID}, UID does not exist").ConfigureAwait(false);
@@ -171,8 +172,8 @@ public partial class SpheneHub
 
         if (!ownPerm.IsPaused() && !otherPerm.IsPaused())
         {
-            await Clients.User(UserUID).Client_UserSendOnline(new(otherUser.ToUserData(), otherIdent, GetKnownClientVersion(otherUser.UID))).ConfigureAwait(false);
-            await Clients.User(otherUser.UID).Client_UserSendOnline(new(user.ToUserData(), UserCharaIdent, GetKnownClientVersion(user.UID))).ConfigureAwait(false);
+            await Clients.User(UserUID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(otherUser.ToUserData(), otherIdent).ConfigureAwait(false)).ConfigureAwait(false);
+            await Clients.User(otherUser.UID).Client_UserSendOnline(await CreateOnlineIdentDtoAsync(user.ToUserData(), UserCharaIdent).ConfigureAwait(false)).ConfigureAwait(false);
         }
     }
 
@@ -198,18 +199,24 @@ public partial class SpheneHub
 
         var allPairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
         var pairs = await GetOnlineUsers(allPairedUsers).ConfigureAwait(false);
+        var gposedUsers = await GetUsersInGpose(pairs.Keys).ConfigureAwait(false);
 
         await SendOnlineToAllPairedUsers().ConfigureAwait(false);
 
         _spheneCensus.PublishStatistics(UserUID, censusData);
 
-        return pairs.Select(p => new OnlineUserIdentDto(new UserData(p.Key), p.Value, GetKnownClientVersion(p.Key))).ToList();
+        return pairs.Select(p => new OnlineUserIdentDto(new UserData(p.Key), p.Value, GetKnownClientVersion(p.Key), gposedUsers.Contains(p.Key))).ToList();
     }
 
     [Authorize(Policy = "Identified")]
     public async Task UserUpdateGposeState(bool isInGpose)
     {
         _logger.LogCallInfo(SpheneHubLogger.Args("IsInGpose:", isInGpose));
+
+        if (isInGpose)
+            await _redis.AddAsync(GposeStateKey, "1", TimeSpan.FromHours(8)).ConfigureAwait(false);
+        else
+            await _redis.RemoveAsync(GposeStateKey).ConfigureAwait(false);
 
         var usersToSendDataTo = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
         if (usersToSendDataTo.Count == 0) return;
@@ -231,7 +238,7 @@ public partial class SpheneHub
             {
                 otherAllowsMods = pref;
             }
-            return new UserFullPairDto(new UserData(p.Key, p.Value.Alias, p.Value.IsSupporter),
+            return new UserFullPairDto(new UserData(p.Key, p.Value.Alias, p.Value.IsSupporter, p.Value.DisplayName),
                 p.Value.ToIndividualPairStatus(),
                 p.Value.GIDs.Where(g => !string.Equals(g, Constants.IndividualKeyword, StringComparison.OrdinalIgnoreCase)).ToList(),
                 p.Value.OwnPermissions.ToUserPermissions(setSticky: true),
@@ -402,23 +409,29 @@ public partial class SpheneHub
     {
         _logger.LogCallInfo(SpheneHubLogger.Args(user));
 
+        var requestedUid = await ResolveUidOrAliasAsync(user.User.UID).ConfigureAwait(false);
+        if (requestedUid == null)
+        {
+            return new UserProfileDto(user.User, false, null, null, "This user does not exist.");
+        }
+
         var allUserPairs = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
 
-        if (!allUserPairs.Contains(user.User.UID, StringComparer.Ordinal) && !string.Equals(user.User.UID, UserUID, StringComparison.Ordinal))
+        if (!allUserPairs.Contains(requestedUid, StringComparer.Ordinal) && !string.Equals(requestedUid, UserUID, StringComparison.Ordinal))
         {
             return new UserProfileDto(user.User, false, null, null, "Due to the pause status you cannot access this users profile.");
         }
 
-        var data = await DbContext.UserProfileData.SingleOrDefaultAsync(u => u.UserUID == user.User.UID).ConfigureAwait(false);
+        var data = await DbContext.UserProfileData.Include(u => u.User).SingleOrDefaultAsync(u => u.UserUID == requestedUid).ConfigureAwait(false);
         if (data == null) return new UserProfileDto(user.User, false, null, null, null);
 
         if (data.FlaggedForReport) return new UserProfileDto(user.User, true, null, null, "This profile is flagged for report and pending evaluation");
         if (data.ProfileDisabled) return new UserProfileDto(user.User, true, null, null, "This profile was permanently disabled");
 
-        var isSelf = string.Equals(user.User.UID, UserUID, StringComparison.Ordinal);
+        var isSelf = string.Equals(requestedUid, UserUID, StringComparison.Ordinal);
         var vis = (ProfileVisibility)data.ProfileVisibility;
         var show = (ProfileVisibility flag) => isSelf || !vis.HasFlag(flag);
-        return new UserProfileDto(user.User, false, data.IsNSFW,
+        return new UserProfileDto(data.User.ToUserData(), false, data.IsNSFW,
             show(ProfileVisibility.HideProfilePicture) ? data.Base64ProfileImage : null,
             show(ProfileVisibility.HideDescription) ? data.UserDescription : null,
             show(ProfileVisibility.HideStatusMessage) ? data.StatusMessage : null,
