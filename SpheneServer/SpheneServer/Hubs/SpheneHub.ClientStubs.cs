@@ -1,6 +1,7 @@
 using Sphene.API.Data;
 using Sphene.API.Data.Enum;
 using Sphene.API.Dto;
+using Sphene.API.Dto.Announcement;
 using Sphene.API.Dto.CharaData;
 using Sphene.API.Dto.Group;
 using Sphene.API.Dto.User;
@@ -72,5 +73,9 @@ namespace SpheneServer.Hubs
         public Task Client_UserCharacterDataRefreshRequested(UserData requester) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_UserUpdateSupporterStatus(bool isSupporter) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_UserIdentityUpdated(UserDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_AnnouncementPublished(AnnouncementDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_AnnouncementsChanged() => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_CommunityChanged(CommunityChangedDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+        public Task Client_UserNotification(UserNotificationDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     }
 }

@@ -91,7 +91,7 @@ public sealed class KofiWebhookService
         await UpdateSupporterStatusInDbAsync(discordId.Value, true).ConfigureAwait(false);
 
         await _botServices.LogToChannel(
-            $"Ko-fi donation from '{payload.FromName}' ({payload.Amount} {payload.Currency}) — " +
+            $"Ko-fi donation from '{payload.FromName}' ({payload.Amount} {payload.Currency}) - " +
             $"matched to Discord user {discordId.Value}. Supporter role assigned.").ConfigureAwait(false);
 
         _logger.LogInformation("Supporter role assigned to Discord user {discordId} from Ko-fi donation", discordId.Value);

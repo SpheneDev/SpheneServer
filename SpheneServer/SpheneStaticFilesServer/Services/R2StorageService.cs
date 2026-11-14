@@ -147,7 +147,7 @@ public sealed class R2StorageService
         }
     }
 
-    private bool IsEnabled()
+    public bool IsEnabled()
     {
         return _configuration.GetValueOrDefault(nameof(StaticFilesServerConfiguration.EnableR2Storage), false);
     }

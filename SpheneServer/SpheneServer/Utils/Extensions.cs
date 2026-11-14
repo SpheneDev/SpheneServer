@@ -8,6 +8,20 @@ namespace SpheneServer.Utils;
 
 public static class Extensions
 {
+    /// <summary>Window of the one-time supporter trial.</summary>
+    public static readonly TimeSpan SupporterTrialDuration = TimeSpan.FromHours(24);
+
+    /// <summary>Effective supporter flag - paid status or an active
+    /// (not yet expired) trial · used everywhere another user's perk
+    /// visibility is decided, never for the paid-only checks.</summary>
+    public static bool IsSupporterEffective(User user)
+        => IsSupporterEffective(user.IsSupporter, user.SupporterTrialStartUtc);
+
+    /// <summary>Primitive overload for projected/anonymous rows.</summary>
+    public static bool IsSupporterEffective(bool isSupporter, DateTime? trialStartUtc)
+        => isSupporter || (trialStartUtc.HasValue
+            && DateTime.UtcNow - trialStartUtc.Value < SupporterTrialDuration);
+
     public static GroupData ToGroupData(this Group group)
     {
         return new GroupData(group.GID, group.Alias);
@@ -15,12 +29,12 @@ public static class Extensions
 
     public static UserData ToUserData(this GroupPair pair)
     {
-        return new UserData(pair.GroupUser.UID, pair.GroupUser.Alias, pair.GroupUser.IsSupporter, pair.GroupUser.DisplayName);
+        return new UserData(pair.GroupUser.UID, pair.GroupUser.Alias, IsSupporterEffective(pair.GroupUser), pair.GroupUser.DisplayName);
     }
 
     public static UserData ToUserData(this User user)
     {
-        return new UserData(user.UID, user.Alias, user.IsSupporter, user.DisplayName);
+        return new UserData(user.UID, user.Alias, IsSupporterEffective(user), user.DisplayName);
     }
 
     public static IndividualPairStatus ToIndividualPairStatus(this UserInfo userInfo)

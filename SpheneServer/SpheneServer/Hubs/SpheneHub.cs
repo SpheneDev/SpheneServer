@@ -49,6 +49,11 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private readonly Uri? _fileServerFallbackAddress;
     private readonly Version _expectedClientVersion;
     private readonly Version _minimumClientVersion;
+    private readonly AnnouncementWriter _announcementWriter;
+    private readonly NotificationWriter _notificationWriter;
+    private readonly PublishingService _publishing;
+    private readonly EntityReferenceService _entityRefs;
+    private readonly CommunityMediaService _communityMedia;
 
     private readonly Lazy<SpheneDbContext> _dbContextLazy;
     private SpheneDbContext DbContext => _dbContextLazy.Value;
@@ -61,7 +66,12 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         IDbContextFactory<SpheneDbContext> spheneDbContextFactory, ILogger<SpheneHub> logger, SystemInfoService systemInfoService,
         IConfigurationService<ServerConfiguration> configuration, IHttpContextAccessor contextAccessor,
         IRedisDatabase redisDb, OnlineSyncedPairCacheService onlineSyncedPairCacheService, SpheneCensus spheneCensus,
-        GPoseLobbyDistributionService gPoseLobbyDistributionService)
+        GPoseLobbyDistributionService gPoseLobbyDistributionService,
+        AnnouncementWriter announcementWriter,
+        NotificationWriter notificationWriter,
+        PublishingService publishingService,
+        EntityReferenceService entityReferenceService,
+        CommunityMediaService communityMediaService)
     {
         _SpheneMetrics = SpheneMetrics;
         _systemInfoService = systemInfoService;
@@ -82,6 +92,11 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         _onlineSyncedPairCacheService = onlineSyncedPairCacheService;
         _spheneCensus = spheneCensus;
         _gPoseLobbyDistributionService = gPoseLobbyDistributionService;
+        _announcementWriter = announcementWriter;
+        _notificationWriter = notificationWriter;
+        _publishing = publishingService;
+        _entityRefs = entityReferenceService;
+        _communityMedia = communityMediaService;
         _logger = new SpheneHubLogger(this, logger);
         _dbContextLazy = new Lazy<SpheneDbContext>(() => spheneDbContextFactory.CreateDbContext());
     }
@@ -143,6 +158,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
             IsAdmin = dbUser.IsAdmin,
             IsModerator = dbUser.IsModerator,
             IsSupporter = dbUser.IsSupporter,
+            SupporterTrialStartUtc = dbUser.SupporterTrialStartUtc,
             RequiresAliasSetup = string.IsNullOrWhiteSpace(dbUser.Alias),
             AliasChangeAvailableAt = dbUser.AliasChangedAt.HasValue
                 ? dbUser.AliasChangedAt.Value.AddDays(Constants.AliasRenameCooldownDays)
@@ -417,6 +433,11 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     public async Task Client_UserAckYouUpdate(UserPermissionsDto dto)
     {
         await Clients.Caller.Client_UserAckYouUpdate(dto).ConfigureAwait(false);
+    }
+
+    public async Task Client_UserReceiveChatMessage(ChatMessageDto dto)
+    {
+        await Clients.Caller.Client_UserReceiveChatMessage(dto).ConfigureAwait(false);
     }
 
     // Client_UserAckOtherUpdate method removed - AckOther is controlled by other player's AckYou

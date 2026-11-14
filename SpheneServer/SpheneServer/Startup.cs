@@ -111,6 +111,16 @@ public class Startup
         services.AddSingleton<GPoseLobbyDistributionService>();
         services.AddHostedService(provider => provider.GetService<GPoseLobbyDistributionService>());
 
+        services.AddSingleton<AnnouncementWriter>();
+        services.AddSingleton<NotificationWriter>();
+        services.AddSingleton<CommunityMediaService>();
+        services.AddSingleton<PublishingService>();
+        services.AddSingleton<EntityReferenceService>();
+        services.AddHostedService<ScheduledPublishHostedService>();
+        services.AddHostedService<EventReminderHostedService>();
+        services.AddSingleton<CommunityMediaBackfillService>();
+        services.AddHostedService(p => p.GetRequiredService<CommunityMediaBackfillService>());
+
         services.AddSingleton<PublicCitySyncshellService>();
         services.AddHostedService(provider => provider.GetService<PublicCitySyncshellService>());
     }

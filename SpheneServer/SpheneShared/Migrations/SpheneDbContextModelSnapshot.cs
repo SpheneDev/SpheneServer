@@ -24,6 +24,91 @@ namespace SpheneServer.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SpheneShared.Models.Announcement", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AuthorDisplay")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("author_display");
+
+                    b.Property<string>("AuthorUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("author_uid");
+
+                    b.Property<string>("BannerImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("banner_image_url");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(16000)
+                        .HasColumnType("character varying(16000)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDraft")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_draft");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_pinned");
+
+                    b.Property<string>("LinkUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("link_url");
+
+                    b.Property<DateTime>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("summary");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_announcements");
+
+                    b.HasIndex("IsDraft")
+                        .HasDatabaseName("ix_announcements_is_draft");
+
+                    b.HasIndex("PublishedAt")
+                        .HasDatabaseName("ix_announcements_published_at");
+
+                    b.ToTable("announcements", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.AreaBoundLocation", b =>
                 {
                     b.Property<int>("Id")
@@ -550,6 +635,46 @@ namespace SpheneServer.Migrations
                     b.ToTable("chara_data_poses", (string)null);
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("message");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<string>("RecipientUID")
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("recipient_uid");
+
+                    b.Property<string>("SenderUID")
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("sender_uid");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_chat_messages");
+
+                    b.HasIndex("RecipientUID")
+                        .HasDatabaseName("ix_chat_messages_recipient_uid");
+
+                    b.HasIndex("SenderUID")
+                        .HasDatabaseName("ix_chat_messages_sender_uid");
+
+                    b.ToTable("chat_messages", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.ClientPair", b =>
                 {
                     b.Property<string>("UserUID")
@@ -578,6 +703,356 @@ namespace SpheneServer.Migrations
                         .HasDatabaseName("ix_client_pairs_user_uid");
 
                     b.ToTable("client_pairs", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityComment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AuthorUid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("author_uid");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("edited_at");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<DateTime?>("ModeratedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("moderated_at");
+
+                    b.Property<int>("ModeratedByScope")
+                        .HasColumnType("integer")
+                        .HasColumnName("moderated_by_scope");
+
+                    b.Property<string>("ModeratedByUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("moderated_by_uid");
+
+                    b.Property<string>("ModerationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("moderation_reason");
+
+                    b.Property<string>("OwnerUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("owner_uid");
+
+                    b.Property<long?>("ParentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("parent_id");
+
+                    b.Property<int>("ReplyCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("reply_count");
+
+                    b.Property<long?>("RootId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("root_id");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.Property<long>("TargetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("target_id");
+
+                    b.Property<int>("TargetKind")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_kind");
+
+                    b.HasKey("Id")
+                        .HasName("pk_community_comments");
+
+                    b.HasIndex("AuthorUid")
+                        .HasDatabaseName("ix_community_comments_author_uid");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_community_comments_group_gid");
+
+                    b.HasIndex("OwnerUid")
+                        .HasDatabaseName("ix_community_comments_owner_uid");
+
+                    b.HasIndex("ParentId")
+                        .HasDatabaseName("ix_community_comments_parent_id");
+
+                    b.HasIndex("RootId", "Id")
+                        .HasDatabaseName("ix_community_comments_root_id_id")
+                        .HasFilter("root_id IS NOT NULL");
+
+                    b.HasIndex("TargetKind", "TargetId", "State", "Id")
+                        .HasDatabaseName("ix_community_comments_target_kind_target_id_state_id");
+
+                    b.ToTable("community_comments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_community_comments_root", "(parent_id IS NULL) = (root_id IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityMedia", b =>
+                {
+                    b.Property<string>("Hash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("hash");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("RefCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("ref_count");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<string>("UploaderUID")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("uploader_uid");
+
+                    b.HasKey("Hash")
+                        .HasName("pk_community_media");
+
+                    b.HasIndex("UploaderUID")
+                        .HasDatabaseName("ix_community_media_uploader_uid");
+
+                    b.ToTable("community_media", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityModerationLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("action");
+
+                    b.Property<int>("ActorScope")
+                        .HasColumnType("integer")
+                        .HasColumnName("actor_scope");
+
+                    b.Property<string>("ActorUid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("actor_uid");
+
+                    b.Property<long?>("CommentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("comment_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("OwnerUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("owner_uid");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<long?>("ReportId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("report_id");
+
+                    b.Property<long>("TargetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("target_id");
+
+                    b.Property<int>("TargetKind")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_kind");
+
+                    b.HasKey("Id")
+                        .HasName("pk_community_moderation_log");
+
+                    b.HasIndex("ActorUid")
+                        .HasDatabaseName("ix_community_moderation_log_actor_uid");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_community_moderation_log_group_gid");
+
+                    b.HasIndex("TargetKind", "TargetId")
+                        .HasDatabaseName("ix_community_moderation_log_target_kind_target_id");
+
+                    b.ToTable("community_moderation_log", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityReaction", b =>
+                {
+                    b.Property<int>("TargetKind")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_kind");
+
+                    b.Property<long>("TargetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("UserUID")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("user_uid");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("OwnerUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("owner_uid");
+
+                    b.HasKey("TargetKind", "TargetId", "UserUID", "Kind")
+                        .HasName("pk_community_reactions");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_community_reactions_group_gid");
+
+                    b.HasIndex("UserUID")
+                        .HasDatabaseName("ix_community_reactions_user_uid");
+
+                    b.HasIndex("TargetKind", "TargetId", "Kind")
+                        .HasDatabaseName("ix_community_reactions_target_kind_target_id_kind");
+
+                    b.ToTable("community_reactions", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityReport", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("details");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("OwnerUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("owner_uid");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("ReporterUid")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("reporter_uid");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("resolution_note");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<string>("ResolvedByUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("resolved_by_uid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.Property<long>("TargetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("target_id");
+
+                    b.Property<int>("TargetKind")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_kind");
+
+                    b.HasKey("Id")
+                        .HasName("pk_community_reports");
+
+                    b.HasIndex("GroupGID", "State")
+                        .HasDatabaseName("ix_community_reports_group_gid_state");
+
+                    b.HasIndex("OwnerUid", "State")
+                        .HasDatabaseName("ix_community_reports_owner_uid_state");
+
+                    b.HasIndex("ReporterUid", "TargetKind", "TargetId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_community_reports_reporter_uid_target_kind_target_id")
+                        .HasFilter("state = 0");
+
+                    b.ToTable("community_reports", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.FileCache", b =>
@@ -667,6 +1142,10 @@ namespace SpheneServer.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("invites_enabled");
 
+                    b.Property<int>("JoinPolicy")
+                        .HasColumnType("integer")
+                        .HasColumnName("join_policy");
+
                     b.Property<string>("OwnerUID")
                         .HasColumnType("character varying(10)")
                         .HasColumnName("owner_uid");
@@ -727,6 +1206,71 @@ namespace SpheneServer.Migrations
                         .HasDatabaseName("ix_group_bans_group_gid");
 
                     b.ToTable("group_bans", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.GroupMembershipApplication", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ApplicantUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("applicant_uid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("review_note");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<string>("ReviewedByUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("reviewed_by_uid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_group_membership_applications");
+
+                    b.HasIndex("ApplicantUID")
+                        .HasDatabaseName("ix_group_membership_applications_applicant_uid");
+
+                    b.HasIndex("ReviewedByUID")
+                        .HasDatabaseName("ix_group_membership_applications_reviewed_by_uid");
+
+                    b.HasIndex("GroupGID", "ApplicantUID")
+                        .IsUnique()
+                        .HasDatabaseName("ix_group_membership_applications_group_gid_applicant_uid");
+
+                    b.HasIndex("GroupGID", "Status")
+                        .HasDatabaseName("ix_group_membership_applications_group_gid_status");
+
+                    b.ToTable("group_membership_applications", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.GroupPair", b =>
@@ -1034,15 +1578,691 @@ namespace SpheneServer.Migrations
                     b.ToTable("pending_file_transfers", (string)null);
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttendingCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("attending_count");
+
+                    b.Property<string>("AuthorUid")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("author_uid");
+
+                    b.Property<int>("CommentCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("comment_count");
+
+                    b.Property<bool>("CommentsLocked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("comments_locked");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DestinationJson")
+                        .HasColumnType("text")
+                        .HasColumnName("destination_json");
+
+                    b.Property<DateTime?>("EndUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_utc");
+
+                    b.Property<int>("EventStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("event_status");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("ImageBase64")
+                        .HasColumnType("text")
+                        .HasColumnName("image_base64");
+
+                    b.Property<string>("ImageMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("image_media_hash");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("location");
+
+                    b.Property<int?>("MaxAttendees")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_attendees");
+
+                    b.Property<string>("OrganizerUidsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("organizer_uids_json");
+
+                    b.Property<string>("PreviewMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("preview_media_hash");
+
+                    b.Property<int>("PublishStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("publish_status");
+
+                    b.Property<string>("RecurrenceRule")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("recurrence_rule");
+
+                    b.Property<string>("RemindersJson")
+                        .HasColumnType("text")
+                        .HasColumnName("reminders_json");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("review_note");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<string>("ReviewedByUid")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("reviewed_by_uid");
+
+                    b.Property<int>("RsvpVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("rsvp_version");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_utc");
+
+                    b.Property<string>("TimezoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("timezone_id");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("url");
+
+                    b.Property<int>("Visibility")
+                        .HasColumnType("integer")
+                        .HasColumnName("visibility");
+
+                    b.Property<int>("WaitlistCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("waitlist_count");
+
+                    b.HasKey("Id")
+                        .HasName("pk_syncshell_community_events");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_syncshell_community_events_group_gid");
+
+                    b.HasIndex("StartUtc")
+                        .HasDatabaseName("ix_syncshell_community_events_start_utc");
+
+                    b.ToTable("syncshell_community_events", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEventException", b =>
+                {
+                    b.Property<long>("EventId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("event_id");
+
+                    b.Property<DateTime>("OccurrenceStartUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurrence_start_utc");
+
+                    b.Property<bool>("Cancelled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("cancelled");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DestinationJson")
+                        .HasColumnType("text")
+                        .HasColumnName("destination_json");
+
+                    b.Property<DateTime?>("EndUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_utc");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("location");
+
+                    b.Property<DateTime?>("StartUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_utc");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("EventId", "OccurrenceStartUtc")
+                        .HasName("pk_community_event_exceptions");
+
+                    b.ToTable("community_event_exceptions", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEventParticipant", b =>
+                {
+                    b.Property<long>("EventId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("UserUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("user_uid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("note");
+
+                    b.Property<DateTime?>("PromotedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("promoted_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("WaitlistPosition")
+                        .HasColumnType("integer")
+                        .HasColumnName("waitlist_position");
+
+                    b.HasKey("EventId", "UserUID")
+                        .HasName("pk_community_event_participants");
+
+                    b.HasIndex("UserUID")
+                        .HasDatabaseName("ix_community_event_participants_user_uid");
+
+                    b.HasIndex("WaitlistPosition")
+                        .HasDatabaseName("ix_community_event_participants_waitlist_position")
+                        .HasFilter("waitlist_position IS NOT NULL");
+
+                    b.HasIndex("EventId", "Status")
+                        .HasDatabaseName("ix_community_event_participants_event_id_status");
+
+                    b.ToTable("community_event_participants", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityGalleryAlbum", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AllowedUidsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("allowed_uids_json");
+
+                    b.Property<int>("Audience")
+                        .HasColumnType("integer")
+                        .HasColumnName("audience");
+
+                    b.Property<long?>("CoverImageId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cover_image_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<long?>("LinkedEventId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("linked_event_id");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_syncshell_community_gallery_albums");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_syncshell_community_gallery_albums_group_gid");
+
+                    b.ToTable("syncshell_community_gallery_albums", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityGalleryImage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("AlbumId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("album_id");
+
+                    b.Property<string>("AllowedUidsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("allowed_uids_json");
+
+                    b.Property<int>("Audience")
+                        .HasColumnType("integer")
+                        .HasColumnName("audience");
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("caption");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("ImageBase64")
+                        .HasColumnType("text")
+                        .HasColumnName("image_base64");
+
+                    b.Property<string>("ImageMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("image_media_hash");
+
+                    b.Property<long?>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("UploadedByUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("uploaded_by_uid");
+
+                    b.HasKey("Id")
+                        .HasName("pk_syncshell_community_gallery");
+
+                    b.HasIndex("AlbumId")
+                        .HasDatabaseName("ix_syncshell_community_gallery_album_id");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_syncshell_community_gallery_group_gid");
+
+                    b.ToTable("syncshell_community_gallery", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityGalleryImageLike", b =>
+                {
+                    b.Property<long>("ImageId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("image_id");
+
+                    b.Property<string>("UserUID")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("user_uid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.HasKey("ImageId", "UserUID")
+                        .HasName("pk_syncshell_community_gallery_image_likes");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_syncshell_community_gallery_image_likes_group_gid");
+
+                    b.HasIndex("UserUID")
+                        .HasDatabaseName("ix_syncshell_community_gallery_image_likes_user_uid");
+
+                    b.ToTable("syncshell_community_gallery_image_likes", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityNewsPost", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AuthorUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("author_uid");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("CoAuthorUidsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("co_author_uids_json");
+
+                    b.Property<int>("CommentCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("comment_count");
+
+                    b.Property<bool>("CommentsLocked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("comments_locked");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<bool>("IsDraft")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_draft");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_pinned");
+
+                    b.Property<DateTime>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<string>("ReviewNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("review_note");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<string>("ReviewedByUid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("reviewed_by_uid");
+
+                    b.Property<DateTime?>("ScheduledForUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_for_utc");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_syncshell_community_news");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_syncshell_community_news_group_gid");
+
+                    b.HasIndex("PublishedAt")
+                        .HasDatabaseName("ix_syncshell_community_news_published_at");
+
+                    b.ToTable("syncshell_community_news", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityStaffAssignment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<long>("RoleId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("role_id");
+
+                    b.Property<string>("UserUID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("user_uid");
+
+                    b.HasKey("Id")
+                        .HasName("pk_syncshell_community_staff_assignments");
+
+                    b.HasIndex("RoleId")
+                        .HasDatabaseName("ix_syncshell_community_staff_assignments_role_id");
+
+                    b.HasIndex("GroupGID", "UserUID", "RoleId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_syncshell_community_staff_assignments_group_gid_user_uid_ro");
+
+                    b.ToTable("syncshell_community_staff_assignments", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityStaffRole", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ColorArgb")
+                        .HasColumnType("bigint")
+                        .HasColumnName("color_argb");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("icon");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("name");
+
+                    b.Property<long>("Permissions")
+                        .HasColumnType("bigint")
+                        .HasColumnName("permissions");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_syncshell_community_staff_roles");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_syncshell_community_staff_roles_group_gid");
+
+                    b.ToTable("syncshell_community_staff_roles", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellFavorite", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<string>("UserUID")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("user_uid");
+
+                    b.HasKey("Id")
+                        .HasName("pk_syncshell_favorites");
+
+                    b.HasIndex("GroupGID")
+                        .HasDatabaseName("ix_syncshell_favorites_group_gid");
+
+                    b.ToTable("syncshell_favorites", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.SyncshellWelcomePage", b =>
                 {
                     b.Property<string>("GroupGID")
                         .HasColumnType("character varying(20)")
                         .HasColumnName("group_gid");
 
+                    b.Property<string>("AccentColor")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)")
+                        .HasColumnName("accent_color");
+
+                    b.Property<string>("AvatarContentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("avatar_content_type");
+
+                    b.Property<string>("AvatarFileName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("avatar_file_name");
+
+                    b.Property<string>("AvatarImageBase64")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_image_base64");
+
+                    b.Property<string>("AvatarMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("avatar_media_hash");
+
+                    b.Property<long?>("AvatarSize")
+                        .HasColumnType("bigint")
+                        .HasColumnName("avatar_size");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("DestinationJson")
+                        .HasColumnType("text")
+                        .HasColumnName("destination_json");
+
+                    b.Property<bool>("DestinationPublished")
+                        .HasColumnType("boolean")
+                        .HasColumnName("destination_published");
 
                     b.Property<string>("ImageContentType")
                         .HasMaxLength(50)
@@ -1062,6 +2282,31 @@ namespace SpheneServer.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_enabled");
 
+                    b.Property<bool>("IsListedPublicly")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_listed_publicly");
+
+                    b.Property<string>("LinksJson")
+                        .HasColumnType("text")
+                        .HasColumnName("links_json");
+
+                    b.Property<string>("OverviewLayoutJson")
+                        .HasColumnType("text")
+                        .HasColumnName("overview_layout_json");
+
+                    b.Property<string>("PublishingPolicyJson")
+                        .HasColumnType("text")
+                        .HasColumnName("publishing_policy_json");
+
+                    b.Property<string>("RulesText")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("rules_text");
+
+                    b.Property<string>("SectionsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("sections_json");
+
                     b.Property<bool>("ShowOnAreaBoundJoin")
                         .HasColumnType("boolean")
                         .HasColumnName("show_on_area_bound_join");
@@ -1070,13 +2315,27 @@ namespace SpheneServer.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("show_on_join");
 
+                    b.Property<string>("Tagline")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("tagline");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<string>("VisibleSectionsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("visible_sections_json");
+
                     b.Property<string>("WelcomeImageBase64")
                         .HasColumnType("text")
                         .HasColumnName("welcome_image_base64");
+
+                    b.Property<string>("WelcomeMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("welcome_media_hash");
 
                     b.Property<string>("WelcomeText")
                         .HasMaxLength(2000)
@@ -1088,6 +2347,9 @@ namespace SpheneServer.Migrations
 
                     b.HasIndex("IsEnabled")
                         .HasDatabaseName("ix_syncshell_welcome_pages_is_enabled");
+
+                    b.HasIndex("IsListedPublicly")
+                        .HasDatabaseName("ix_syncshell_welcome_pages_is_listed_publicly");
 
                     b.ToTable("syncshell_welcome_pages", (string)null);
                 });
@@ -1129,6 +2391,14 @@ namespace SpheneServer.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_logged_in");
 
+                    b.Property<long>("NotificationDisabledKinds")
+                        .HasColumnType("bigint")
+                        .HasColumnName("notification_disabled_kinds");
+
+                    b.Property<DateTime?>("SupporterTrialStartUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("supporter_trial_start_utc");
+
                     b.Property<byte[]>("Timestamp")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1139,6 +2409,39 @@ namespace SpheneServer.Migrations
                         .HasName("pk_users");
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserBlock", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("BlockedOn")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("blocked_on");
+
+                    b.Property<string>("BlockedUserUID")
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("blocked_user_uid");
+
+                    b.Property<string>("UserUID")
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("user_uid");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_blocks");
+
+                    b.HasIndex("BlockedUserUID")
+                        .HasDatabaseName("ix_user_blocks_blocked_user_uid");
+
+                    b.HasIndex("UserUID")
+                        .HasDatabaseName("ix_user_blocks_user_uid");
+
+                    b.ToTable("user_blocks", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.UserDefaultPreferredPermission", b =>
@@ -1268,6 +2571,84 @@ namespace SpheneServer.Migrations
                     b.ToTable("user_housing_properties", (string)null);
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.UserNotification", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ActorUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("actor_uid");
+
+                    b.Property<string>("ContentId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_id");
+
+                    b.Property<string>("ContentKind")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("content_kind");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DedupeKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("dedupe_key");
+
+                    b.Property<string>("GroupGID")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("group_gid");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_read");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("RecipientUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("recipient_uid");
+
+                    b.Property<string>("Snippet")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("snippet");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_notifications");
+
+                    b.HasIndex("RecipientUID")
+                        .HasDatabaseName("ix_user_notifications_recipient_uid");
+
+                    b.HasIndex("RecipientUID", "DedupeKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_notifications_recipient_uid_dedupe_key")
+                        .HasFilter("dedupe_key IS NOT NULL");
+
+                    b.HasIndex("RecipientUID", "IsRead")
+                        .HasDatabaseName("ix_user_notifications_recipient_uid_is_read");
+
+                    b.ToTable("user_notifications", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.UserPermissionSet", b =>
                 {
                     b.Property<string>("UserUID")
@@ -1321,11 +2702,91 @@ namespace SpheneServer.Migrations
                     b.ToTable("user_permission_sets", (string)null);
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.UserProfileBlogPost", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("CoAuthorUidsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("co_author_uids_json");
+
+                    b.Property<int>("CommentCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("comment_count");
+
+                    b.Property<bool>("CommentsLocked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("comments_locked");
+
+                    b.Property<string>("CoverMediaHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("cover_media_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Pinned")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pinned");
+
+                    b.Property<DateTime?>("ScheduledForUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_for_utc");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserUID")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("user_uid");
+
+                    b.Property<int>("VisibilityScope")
+                        .HasColumnType("integer")
+                        .HasColumnName("visibility_scope");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_profile_blog_posts");
+
+                    b.HasIndex("UserUID")
+                        .HasDatabaseName("ix_user_profile_blog_posts_user_uid");
+
+                    b.ToTable("user_profile_blog_posts", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.UserProfileData", b =>
                 {
                     b.Property<string>("UserUID")
                         .HasColumnType("character varying(10)")
                         .HasColumnName("user_uid");
+
+                    b.Property<string>("BannerMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("banner_media_hash");
 
                     b.Property<string>("Base64BannerImage")
                         .HasColumnType("text")
@@ -1347,9 +2808,18 @@ namespace SpheneServer.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_nsfw");
 
+                    b.Property<string>("LinksJson")
+                        .HasColumnType("text")
+                        .HasColumnName("links_json");
+
                     b.Property<bool>("ProfileDisabled")
                         .HasColumnType("boolean")
                         .HasColumnName("profile_disabled");
+
+                    b.Property<string>("ProfileImageMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("profile_image_media_hash");
 
                     b.Property<string>("ProfileTags")
                         .HasColumnType("text")
@@ -1363,6 +2833,11 @@ namespace SpheneServer.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("profile_visibility");
 
+                    b.Property<string>("RowImageMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("row_image_media_hash");
+
                     b.Property<string>("StatusMessage")
                         .HasColumnType("text")
                         .HasColumnName("status_message");
@@ -1375,6 +2850,135 @@ namespace SpheneServer.Migrations
                         .HasName("pk_user_profile_data");
 
                     b.ToTable("user_profile_data", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileGalleryAlbum", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("UserUID")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("user_uid");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_profile_gallery_albums");
+
+                    b.HasIndex("UserUID")
+                        .HasDatabaseName("ix_user_profile_gallery_albums_user_uid");
+
+                    b.ToTable("user_profile_gallery_albums", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileGalleryImage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("AlbumId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("album_id");
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(280)
+                        .HasColumnType("character varying(280)")
+                        .HasColumnName("caption");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("ImageBase64")
+                        .HasColumnType("text")
+                        .HasColumnName("image_base64");
+
+                    b.Property<string>("ImageMediaHash")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("image_media_hash");
+
+                    b.Property<long?>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("UserUID")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("user_uid");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_profile_gallery_images");
+
+                    b.HasIndex("AlbumId")
+                        .HasDatabaseName("ix_user_profile_gallery_images_album_id");
+
+                    b.HasIndex("UserUID")
+                        .HasDatabaseName("ix_user_profile_gallery_images_user_uid");
+
+                    b.ToTable("user_profile_gallery_images", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileGalleryImageLike", b =>
+                {
+                    b.Property<long>("ImageId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("image_id");
+
+                    b.Property<string>("LikerUID")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("liker_uid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("ImageId", "LikerUID")
+                        .HasName("pk_user_profile_gallery_image_likes");
+
+                    b.HasIndex("LikerUID")
+                        .HasDatabaseName("ix_user_profile_gallery_image_likes_liker_uid");
+
+                    b.ToTable("user_profile_gallery_image_likes", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.AreaBoundLocation", b =>
@@ -1542,6 +3146,23 @@ namespace SpheneServer.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.ChatMessage", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "Recipient")
+                        .WithMany()
+                        .HasForeignKey("RecipientUID")
+                        .HasConstraintName("fk_chat_messages_users_recipient_uid");
+
+                    b.HasOne("SpheneShared.Models.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderUID")
+                        .HasConstraintName("fk_chat_messages_users_sender_uid");
+
+                    b.Navigation("Recipient");
+
+                    b.Navigation("Sender");
+                });
+
             modelBuilder.Entity("SpheneShared.Models.ClientPair", b =>
                 {
                     b.HasOne("SpheneShared.Models.User", "OtherUser")
@@ -1561,6 +3182,102 @@ namespace SpheneServer.Migrations
                     b.Navigation("OtherUser");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityComment", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorUid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_community_comments_users_author_uid");
+
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_community_comments_groups_group_gid");
+
+                    b.HasOne("SpheneShared.Models.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerUid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_community_comments_users_owner_uid");
+
+                    b.HasOne("SpheneShared.Models.CommunityComment", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_community_comments_community_comments_parent_id");
+
+                    b.HasOne("SpheneShared.Models.CommunityComment", "Root")
+                        .WithMany()
+                        .HasForeignKey("RootId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_community_comments_community_comments_root_id");
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Group");
+
+                    b.Navigation("Owner");
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("Root");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityMedia", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "Uploader")
+                        .WithMany()
+                        .HasForeignKey("UploaderUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_community_media_users_uploader_uid");
+
+                    b.Navigation("Uploader");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityReaction", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_community_reactions_users_user_uid");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.CommunityReport", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_community_reports_groups_group_gid");
+
+                    b.HasOne("SpheneShared.Models.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerUid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_community_reports_users_owner_uid");
+
+                    b.HasOne("SpheneShared.Models.User", "Reporter")
+                        .WithMany()
+                        .HasForeignKey("ReporterUid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_community_reports_users_reporter_uid");
+
+                    b.Navigation("Group");
+
+                    b.Navigation("Owner");
+
+                    b.Navigation("Reporter");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.FileCache", b =>
@@ -1609,6 +3326,33 @@ namespace SpheneServer.Migrations
                     b.Navigation("BannedUser");
 
                     b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.GroupMembershipApplication", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "Applicant")
+                        .WithMany()
+                        .HasForeignKey("ApplicantUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_group_membership_applications_users_applicant_uid");
+
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_group_membership_applications_groups_group_gid");
+
+                    b.HasOne("SpheneShared.Models.User", "ReviewedBy")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUID")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_group_membership_applications_users_reviewed_by_uid");
+
+                    b.Navigation("Applicant");
+
+                    b.Navigation("Group");
+
+                    b.Navigation("ReviewedBy");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.GroupPair", b =>
@@ -1675,6 +3419,135 @@ namespace SpheneServer.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEvent", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_syncshell_community_events_groups_group_gid");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEventException", b =>
+                {
+                    b.HasOne("SpheneShared.Models.SyncshellCommunityEvent", "Event")
+                        .WithMany("Exceptions")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_community_event_exceptions_syncshell_community_events_event");
+
+                    b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEventParticipant", b =>
+                {
+                    b.HasOne("SpheneShared.Models.SyncshellCommunityEvent", "Event")
+                        .WithMany("Participants")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_community_event_participants_syncshell_community_events_eve");
+
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_community_event_participants_users_user_uid");
+
+                    b.Navigation("Event");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityGalleryAlbum", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_syncshell_community_gallery_albums_groups_group_gid");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityGalleryImage", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_syncshell_community_gallery_groups_group_gid");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityGalleryImageLike", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_syncshell_community_gallery_image_likes_groups_group_gid");
+
+                    b.HasOne("SpheneShared.Models.SyncshellCommunityGalleryImage", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_syncshell_community_gallery_image_likes_syncshell_community");
+
+                    b.Navigation("Group");
+
+                    b.Navigation("Image");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityNewsPost", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_syncshell_community_news_groups_group_gid");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityStaffAssignment", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_syncshell_community_staff_assignments_groups_group_gid");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityStaffRole", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_syncshell_community_staff_roles_groups_group_gid");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellFavorite", b =>
+                {
+                    b.HasOne("SpheneShared.Models.Group", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupGID")
+                        .HasConstraintName("fk_syncshell_favorites_groups_group_gid");
+
+                    b.Navigation("Group");
+                });
+
             modelBuilder.Entity("SpheneShared.Models.SyncshellWelcomePage", b =>
                 {
                     b.HasOne("SpheneShared.Models.Group", "Group")
@@ -1685,6 +3558,23 @@ namespace SpheneServer.Migrations
                         .HasConstraintName("fk_syncshell_welcome_pages_groups_group_gid");
 
                     b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserBlock", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "BlockedUser")
+                        .WithMany()
+                        .HasForeignKey("BlockedUserUID")
+                        .HasConstraintName("fk_user_blocks_users_blocked_user_uid");
+
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .HasConstraintName("fk_user_blocks_users_user_uid");
+
+                    b.Navigation("BlockedUser");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.UserDefaultPreferredPermission", b =>
@@ -1710,6 +3600,17 @@ namespace SpheneServer.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.UserNotification", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "Recipient")
+                        .WithMany()
+                        .HasForeignKey("RecipientUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_user_notifications_users_recipient_uid");
+
+                    b.Navigation("Recipient");
+                });
+
             modelBuilder.Entity("SpheneShared.Models.UserPermissionSet", b =>
                 {
                     b.HasOne("SpheneShared.Models.User", "OtherUser")
@@ -1731,6 +3632,18 @@ namespace SpheneServer.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.UserProfileBlogPost", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_profile_blog_posts_users_user_uid");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("SpheneShared.Models.UserProfileData", b =>
                 {
                     b.HasOne("SpheneShared.Models.User", "User")
@@ -1741,6 +3654,50 @@ namespace SpheneServer.Migrations
                         .HasConstraintName("fk_user_profile_data_users_user_uid");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileGalleryAlbum", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_profile_gallery_albums_users_user_uid");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileGalleryImage", b =>
+                {
+                    b.HasOne("SpheneShared.Models.UserProfileGalleryAlbum", "Album")
+                        .WithMany("Images")
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_user_profile_gallery_images_user_profile_gallery_albums_alb");
+
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_profile_gallery_images_users_user_uid");
+
+                    b.Navigation("Album");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileGalleryImageLike", b =>
+                {
+                    b.HasOne("SpheneShared.Models.UserProfileGalleryImage", "Image")
+                        .WithMany()
+                        .HasForeignKey("ImageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_profile_gallery_image_likes_user_profile_gallery_image");
+
+                    b.Navigation("Image");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.AreaBoundSyncshell", b =>
@@ -1759,6 +3716,18 @@ namespace SpheneServer.Migrations
                     b.Navigation("OriginalFiles");
 
                     b.Navigation("Poses");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEvent", b =>
+                {
+                    b.Navigation("Exceptions");
+
+                    b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileGalleryAlbum", b =>
+                {
+                    b.Navigation("Images");
                 });
 #pragma warning restore 612, 618
         }

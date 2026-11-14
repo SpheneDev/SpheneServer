@@ -440,19 +440,10 @@ internal class DiscordBot : IHostedService
 
                     var aliasedUsers = await db.LodeStoneAuth.Include("User")
                         .Where(c => c.User != null && !string.IsNullOrEmpty(c.User.Alias)).ToListAsync().ConfigureAwait(false);
-                    var aliasedGroups = await db.Groups.Include(u => u.Owner)
-                        .Where(c => !string.IsNullOrEmpty(c.Alias)).ToListAsync().ConfigureAwait(false);
 
                     foreach (var lodestoneAuth in aliasedUsers)
                     {
                         await CheckVanityForUser(restGuild, allowedRoleIds, db, lodestoneAuth, token).ConfigureAwait(false);
-
-                        await Task.Delay(1000, token).ConfigureAwait(false);
-                    }
-
-                    foreach (var group in aliasedGroups)
-                    {
-                        await CheckVanityForGroup(restGuild, allowedRoleIds, db, group, token).ConfigureAwait(false);
 
                         await Task.Delay(1000, token).ConfigureAwait(false);
                     }
@@ -469,42 +460,6 @@ internal class DiscordBot : IHostedService
 
             _logger.LogInformation("Vanity UID cleanup complete");
             await Task.Delay(TimeSpan.FromHours(12), token).ConfigureAwait(false);
-        }
-    }
-
-    private async Task CheckVanityForGroup(RestGuild restGuild, Dictionary<ulong, string> allowedRoleIds, SpheneDbContext db, Group group, CancellationToken token)
-    {
-        // Skip system-owned public syncshells (protect public city syncshells)
-        if (group.OwnerUID == "SYS_PUBSN")
-        {
-            _logger.LogDebug($"Skipping system-owned public syncshell: {group.GID} [{group.Alias}]");
-            return;
-        }
-
-        var groupPrimaryUser = group.OwnerUID;
-        var groupOwner = await db.Auth.Include(u => u.User).SingleOrDefaultAsync(u => u.UserUID == group.OwnerUID).ConfigureAwait(false);
-        if (groupOwner != null && !string.IsNullOrEmpty(groupOwner.PrimaryUserUID))
-        {
-            groupPrimaryUser = groupOwner.PrimaryUserUID;
-        }
-
-        var lodestoneUser = await db.LodeStoneAuth.Include(u => u.User).SingleOrDefaultAsync(f => f.User.UID == groupPrimaryUser).ConfigureAwait(false);
-        RestGuildUser discordUser = null;
-        if (lodestoneUser != null)
-        {
-            discordUser = await restGuild.GetUserAsync(lodestoneUser.DiscordId).ConfigureAwait(false);
-        }
-
-        _logger.LogInformation($"Checking Group: {group.GID} [{group.Alias}], owned by {group.OwnerUID} ({groupPrimaryUser}), User in Roles: {string.Join(", ", discordUser?.RoleIds ?? new List<ulong>())}");
-
-        if (lodestoneUser == null || discordUser == null || !discordUser.RoleIds.Any(allowedRoleIds.Keys.Contains))
-        {
-            await _botServices.LogToChannel($"VANITY GID REMOVAL: <@{lodestoneUser?.DiscordId ?? 0}> ({lodestoneUser?.User?.UID}) - GID: {group.GID}, Vanity: {group.Alias}").ConfigureAwait(false);
-
-            _logger.LogInformation($"User {lodestoneUser?.User?.UID ?? "unknown"} not in allowed roles, deleting group alias for {group.GID}");
-            group.Alias = null;
-            db.Update(group);
-            await db.SaveChangesAsync(token).ConfigureAwait(false);
         }
     }
 
@@ -1046,7 +1001,7 @@ internal class DiscordBot : IHostedService
         if (titleLine.StartsWith(expected, StringComparison.OrdinalIgnoreCase))
         {
             var remainder = titleLine[expected.Length..].Trim();
-            return string.IsNullOrEmpty(remainder) || remainder is ":" or "-" or "–" or "—";
+            return string.IsNullOrEmpty(remainder) || remainder is ":" or "-" or "-" or "-";
         }
 
         return false;

@@ -229,7 +229,7 @@ public partial class SpheneWizardModule : InteractionModuleBase
         if (!Regex.IsMatch(newAlias, Sphene.API.Data.Constants.AliasValidationPattern))
         {
             eb.WithTitle("Invalid Identifier");
-            eb.WithDescription("The soul resonance identifier must be 5-15 characters: letters, digits, `.` `_` `-` — no spaces.");
+            eb.WithDescription("The soul resonance identifier must be 5-15 characters: letters, digits, `.` `_` `-` - no spaces.");
             eb.WithColor(Color.Red);
             cb.WithButton("Try Again", "wizard-change-alias", ButtonStyle.Primary, new Emoji("✨"));
             AddHome(cb);

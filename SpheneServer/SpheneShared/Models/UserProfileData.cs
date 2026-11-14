@@ -21,9 +21,20 @@ public class UserProfileData
 
     public string Base64RowImage { get; set; }
 
+    // Hash-addressed media replacements for the three base64 image slots
+    // (profile avatar, banner, row image) - preferred while set.
+    [MaxLength(40)]
+    public string? ProfileImageMediaHash { get; set; }
+    [MaxLength(40)]
+    public string? BannerMediaHash { get; set; }
+    [MaxLength(40)]
+    public string? RowImageMediaHash { get; set; }
+
     public string ProfileTheme { get; set; }
 
     public int ProfileVisibility { get; set; }
+
+    public string? LinksJson { get; set; }
 
     [Required]
     [Key]

@@ -6,6 +6,8 @@ public class ServerConfiguration : SpheneConfigurationBase
 {
     [RemoteConfiguration]
     public Uri CdnFullUrl { get; set; } = null;
+    /// <summary>Opt-in switch for the lazy base64→CDN media backfill worker.</summary>
+    public bool CommunityMediaBackfillEnabled { get; set; } = false;
 
     [RemoteConfiguration]
     public Uri FileServerFallbackAddress { get; set; } = null;

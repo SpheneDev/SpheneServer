@@ -24,7 +24,7 @@ namespace SpheneServer.Migrations
                 maxLength: 64,
                 nullable: true);
 
-            // Empty-string aliases are "no alias" — normalize before the unique index.
+            // Empty-string aliases are "no alias" - normalize before the unique index.
             migrationBuilder.Sql("""
                 UPDATE users SET alias = NULL WHERE alias = '';
                 """);

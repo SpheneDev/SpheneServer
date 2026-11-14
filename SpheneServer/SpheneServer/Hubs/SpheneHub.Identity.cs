@@ -164,7 +164,7 @@ public partial class SpheneHub
         var pairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
         if (pairedUsers.Count == 0) return;
 
-        var dto = new UserDto(new UserData(user.UID, user.Alias, user.IsSupporter, user.DisplayName));
+        var dto = new UserDto(new UserData(user.UID, user.Alias, Utils.Extensions.IsSupporterEffective(user), user.DisplayName));
         await Clients.Users(pairedUsers).Client_UserIdentityUpdated(dto).ConfigureAwait(false);
     }
 }

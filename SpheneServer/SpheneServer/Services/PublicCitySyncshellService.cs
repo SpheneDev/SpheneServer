@@ -232,12 +232,12 @@ public class PublicCitySyncshellService : IHostedService
         {
             _logger.LogDebug("Public syncshell for {CityName} on {WorldName} already exists with GID {GID}", city.Name, world.Name, existingGroup.GID);
 
-            // Ensure InvitesEnabled is true — it was incorrectly set to false on creation,
+            // Ensure InvitesEnabled is true - it was incorrectly set to false on creation,
             // which locks the syncshell (IsLocked = !InvitesEnabled)
             if (!existingGroup.InvitesEnabled)
             {
                 existingGroup.InvitesEnabled = true;
-                _logger.LogInformation("Fixed locked public syncshell for {CityName} on {WorldName} (GID: {GID}) — re-enabled InvitesEnabled", city.Name, world.Name, existingGroup.GID);
+                _logger.LogInformation("Fixed locked public syncshell for {CityName} on {WorldName} (GID: {GID}) - re-enabled InvitesEnabled", city.Name, world.Name, existingGroup.GID);
             }
 
             // Load the AreaBoundSyncshell and its locations separately
@@ -298,7 +298,7 @@ public class PublicCitySyncshellService : IHostedService
         {
             GID = gid,
             HashedPassword = hashedPassword,
-            InvitesEnabled = true, // Must be true — InvitesEnabled is overloaded as a lock flag (IsLocked = !InvitesEnabled)
+            InvitesEnabled = true, // Must be true - InvitesEnabled is overloaded as a lock flag (IsLocked = !InvitesEnabled)
             OwnerUID = systemUser.UID,
             Alias = alias,
             PreferDisableAnimations = false,
@@ -463,32 +463,31 @@ By accepting these rules, you agree to follow them while in this syncshell.";
 
     private string GetDefaultWelcomeMessage(string cityName, string worldName)
     {
-        return $@"# Welcome to the <color=#00A3FF>{cityName} </color> Public Syncshell for <color=#FFAE00>{worldName}</color>!
+        // Markdown - the community About tab renders it through Markdig
+        // (Sphene <color> tags included); the service upgrades existing
+        // rows automatically when this template changes.
+        return $@"# Welcome to the <color=#00A3FF>{cityName}</color> Public Syncshell for <color=#FFAE00>{worldName}</color>!
 
+## This is the official Sphene community space for **{cityName}** on **{worldName}** - we're glad to have you here!
 
-## This is the <color=#FFAE00>official Sphene community space</color> for <color=#FFAE00>{cityName}</color> on <color=#FFAE00>{worldName}</color>. We're glad to have you here!
+## Community Guidelines
 
-# <color=#00A3FF>Community Guidelines</color>
+- Be respectful to all community members
+- Follow the rules and community standards
+- Keep conversations friendly and constructive
+- Report any issues to moderators if needed
 
-### -  Be respectful to all community members
-### -  Follow the rules and community standards
-### -  Keep conversations friendly and constructive
-### -  Report any issues to moderators if needed
+## About This Space
 
----
-
-# <color=#00A3FF>About This Space</color>
-
-### -  Open to all Sphene users visiting {cityName} on {worldName}
-### -  Automatically managed by the Sphene system
-### -  Designed for your comfort and enjoyment
-
----
+- Open to all Sphene users visiting {cityName} on {worldName}
+- Automatically managed by the Sphene system
+- Designed for your comfort and enjoyment
 
 We hope you feel welcome and comfortable here. Thank you for being part of our community!
 
-#                                               With warm regards,
-#                                                          <color=#00A3FF>The Sphene Team <3</color>";
+With warm regards,
+
+**<color=#00A3FF>The Sphene Team</color>**";
     }
 
     private record CityInfo(string Name, int TerritoryId, int MapId);

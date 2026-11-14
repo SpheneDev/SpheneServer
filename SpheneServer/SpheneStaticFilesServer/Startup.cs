@@ -214,15 +214,16 @@ public class Startup
             {
                 a.FeatureProviders.Add(new AllowedControllersFeatureProvider(typeof(SpheneStaticFilesServerConfigurationController),
                     typeof(CacheController), typeof(RequestController), typeof(ServerFilesController),
-                    typeof(DistributionController), typeof(MainController), typeof(SpeedTestController)));
+                    typeof(DistributionController), typeof(MainController), typeof(SpeedTestController),
+                    typeof(CommunityMediaController)));
             }
             else if (_isDistributionNode)
             {
-                a.FeatureProviders.Add(new AllowedControllersFeatureProvider(typeof(CacheController), typeof(RequestController), typeof(DistributionController), typeof(SpeedTestController)));
+                a.FeatureProviders.Add(new AllowedControllersFeatureProvider(typeof(CacheController), typeof(RequestController), typeof(DistributionController), typeof(SpeedTestController), typeof(CommunityMediaController)));
             }
             else
             {
-                a.FeatureProviders.Add(new AllowedControllersFeatureProvider(typeof(CacheController), typeof(RequestController), typeof(SpeedTestController)));
+                a.FeatureProviders.Add(new AllowedControllersFeatureProvider(typeof(CacheController), typeof(RequestController), typeof(SpeedTestController), typeof(CommunityMediaController)));
             }
         });
 

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SpheneServer.Utils;
 using SpheneShared.Utils;
 using Sphene.API.Data;
+using Sphene.API.Data.Enum;
 using Sphene.API.Dto.Group;
 using Sphene.API.Dto.User;
 using SpheneShared.Metrics;
@@ -78,7 +79,7 @@ public partial class SpheneHub
     {
         uid ??= UserUID;
 
-        return (await GetSyncedUnpausedOnlinePairs(UserUID).ConfigureAwait(false));
+        return (await GetSyncedUnpausedOnlinePairs(uid).ConfigureAwait(false));
     }
 
     private async Task<Dictionary<string, string>> GetOnlineUsers(List<string> uids)
@@ -199,6 +200,55 @@ public partial class SpheneHub
         if (groupPair == null) return (false, null);
 
         return (true, groupPair);
+    }
+
+    /// <summary>
+    /// Combined capability bits from the caller's staff-role assignments in
+    /// <paramref name="gid"/> - a member may hold several jobs, their flags union.
+    /// </summary>
+    private async Task<long> GetStaffPermissionBits(string gid, string uid)
+    {
+        var rolePerms = await DbContext.SyncshellCommunityStaffAssignments
+            .Where(a => a.GroupGID == gid && a.UserUID == uid)
+            .Join(DbContext.SyncshellCommunityStaffRoles.Where(r => r.GroupGID == gid),
+                a => a.RoleId, r => r.Id, (a, r) => r.Permissions)
+            .ToListAsync().ConfigureAwait(false);
+        var bits = 0L;
+        foreach (var p in rolePerms)
+        {
+            bits |= p;
+        }
+        return bits;
+    }
+
+    /// <summary>
+    /// Moderator/owner gate OR an assigned staff role granting
+    /// <paramref name="required"/> - this is how an owner delegates single
+    /// community duties (events, news, gallery, page) without moderation powers.
+    /// </summary>
+    private async Task<bool> HasCommunityRights(string gid, SyncshellStaffPermission required)
+    {
+        var (hasRights, _) = await TryValidateGroupModeratorOrOwner(gid).ConfigureAwait(false);
+        if (hasRights) return true;
+        return (await GetStaffPermissionBits(gid, UserUID).ConfigureAwait(false) & (long)required) != 0;
+    }
+
+    /// <summary>Moderator/owner or holder of any assigned staff role - the
+    /// "staff" side of gallery audiences (staff always see restricted items).</summary>
+    private async Task<bool> IsCommunityStaff(string gid)
+    {
+        var (hasRights, _) = await TryValidateGroupModeratorOrOwner(gid).ConfigureAwait(false);
+        return hasRights
+            || (await GetStaffPermissionBits(gid, UserUID).ConfigureAwait(false)) != 0;
+    }
+
+    /// <summary>Owner or a staff role carrying ManageRoles - the delegation gate.</summary>
+    private async Task<bool> CanManageStaffRoles(string gid)
+    {
+        var (isOwner, _) = await TryValidateOwner(gid).ConfigureAwait(false);
+        if (isOwner) return true;
+        return (await GetStaffPermissionBits(gid, UserUID).ConfigureAwait(false)
+            & (long)SyncshellStaffPermission.ManageRoles) != 0;
     }
 
     private async Task UpdateUserOnRedis()
@@ -361,6 +411,7 @@ public partial class SpheneHub
                          OtherUserUID = user.OtherUserUID,
                          OtherUserAlias = u.Alias,
                          OtherUserIsSupporter = u.IsSupporter,
+                         OtherUserTrialStart = u.SupporterTrialStartUtc,
                          OtherUserDisplayName = u.DisplayName,
                          GID = user.Gid,
                          Synced = user.Synced,
@@ -381,7 +432,8 @@ public partial class SpheneHub
             resultList[0].OwnPermissions,
             resultList[0].OtherPermissions,
             resultList.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair),
-            resultList[0].OtherUserIsSupporter,
+            Utils.Extensions.IsSupporterEffective(resultList[0].OtherUserIsSupporter,
+                resultList[0].OtherUserTrialStart),
             resultList[0].OtherUserDisplayName);
     }
 
@@ -477,6 +529,7 @@ public partial class SpheneHub
                          OtherUserUID = user.OtherUserUID,
                          OtherUserAlias = u.Alias,
                          OtherUserIsSupporter = u.IsSupporter,
+                         OtherUserTrialStart = u.SupporterTrialStartUtc,
                          OtherUserDisplayName = u.DisplayName,
                          GID = user.Gid,
                          Synced = user.Synced,
@@ -495,7 +548,8 @@ public partial class SpheneHub
                 g.First().OwnPermissions,
                 g.First().OtherPermissions,
                 g.Any(p => string.IsNullOrEmpty(p.GID) && p.IsOutgoingIndividualPair),
-                g.First().OtherUserIsSupporter,
+                Utils.Extensions.IsSupporterEffective(g.First().OtherUserIsSupporter,
+                    g.First().OtherUserTrialStart),
                 g.First().OtherUserDisplayName);
         }, StringComparer.Ordinal);
     }

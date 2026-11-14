@@ -6,6 +6,7 @@ using Sphene.API.Data;
 using Sphene.API.Data.Enum;
 using Sphene.API.Data.Extensions;
 using Sphene.API.Dto.User;
+using SpheneServer.Services;
 using SpheneServer.Utils;
 using SpheneShared.Metrics;
 using SpheneShared.Models;
@@ -55,6 +56,12 @@ public partial class SpheneHub
         if (existingEntry != null)
         {
             await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Warning, $"Cannot pair with {dto.User.UID}, already paired").ConfigureAwait(false);
+            return;
+        }
+
+        if (await IsBlockedEitherWay(otherUser.UID).ConfigureAwait(false))
+        {
+            await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Warning, $"Cannot pair with {dto.User.UID}").ConfigureAwait(false);
             return;
         }
 
@@ -405,6 +412,28 @@ public partial class SpheneHub
     }
 
     [Authorize(Policy = "Identified")]
+    public async Task<DateTime?> UserActivateSupporterTrial()
+    {
+        var user = await DbContext.Users.SingleAsync(u => u.UID == UserUID).ConfigureAwait(false);
+        if (user.SupporterTrialStartUtc.HasValue || user.IsSupporter)
+        {
+            return user.SupporterTrialStartUtc;
+        }
+
+        user.SupporterTrialStartUtc = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+
+        // paired users should see the freshly activated perk without a reconnect
+        var pairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+        if (pairedUsers.Count > 0)
+        {
+            var dto = new UserDto(new UserData(user.UID, user.Alias, true, user.DisplayName));
+            await Clients.Users(pairedUsers).Client_UserIdentityUpdated(dto).ConfigureAwait(false);
+        }
+        return user.SupporterTrialStartUtc;
+    }
+
+    [Authorize(Policy = "Identified")]
     public async Task<UserProfileDto> UserGetProfile(UserDto user)
     {
         _logger.LogCallInfo(SpheneHubLogger.Args(user));
@@ -437,7 +466,347 @@ public partial class SpheneHub
             show(ProfileVisibility.HideStatusMessage) ? data.StatusMessage : null,
             show(ProfileVisibility.HideTags) ? data.ProfileTags : null,
             show(ProfileVisibility.HideBanner) ? data.Base64BannerImage : null,
-            data.ProfileTheme, data.ProfileVisibility, data.Base64RowImage);
+            data.ProfileTheme, data.ProfileVisibility, data.Base64RowImage,
+            show(ProfileVisibility.HideLinks)
+                ? DeserializeJson<List<UserProfileLinkDto>>(data.LinksJson) : null);
+    }
+
+    /// <summary>
+    /// Lazily fetched profile extras (gallery + blog) - kept off the hot
+    /// <see cref="UserGetProfile"/> path so pair-list profile pulls stay light.
+    /// </summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<UserProfileExtrasDto> UserGetProfileExtras(UserDto user)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(user));
+
+        var requestedUid = await ResolveUidOrAliasAsync(user.User.UID).ConfigureAwait(false);
+        if (requestedUid == null)
+        {
+            return new UserProfileExtrasDto(user.User, null, null);
+        }
+
+        var allUserPairs = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+        if (!allUserPairs.Contains(requestedUid, StringComparer.Ordinal) && !string.Equals(requestedUid, UserUID, StringComparison.Ordinal))
+        {
+            return new UserProfileExtrasDto(user.User, null, null);
+        }
+
+        var data = await DbContext.UserProfileData.SingleOrDefaultAsync(u => u.UserUID == requestedUid).ConfigureAwait(false);
+        if (data == null || data.FlaggedForReport || data.ProfileDisabled)
+        {
+            return new UserProfileExtrasDto(user.User, null, null);
+        }
+
+        var isSelf = string.Equals(requestedUid, UserUID, StringComparison.Ordinal);
+        var vis = (ProfileVisibility)data.ProfileVisibility;
+        var show = (ProfileVisibility flag) => isSelf || !vis.HasFlag(flag);
+
+        List<UserProfileGalleryImageDto>? gallery = null;
+        List<UserProfileGalleryAlbumDto>? albums = null;
+        if (show(ProfileVisibility.HideGallery))
+        {
+            var images = await DbContext.UserProfileGalleryImages
+                .Where(g => g.UserUID == requestedUid)
+                .OrderBy(g => g.SortOrder).ThenByDescending(g => g.CreatedAt)
+                .Select(g => new { g.Id, g.ImageBase64, g.FileName,
+                    g.ContentType, g.Size, g.Caption, g.SortOrder, g.CreatedAt, g.AlbumId })
+                .ToListAsync().ConfigureAwait(false);
+            var likeData = await GetProfileGalleryLikeData(images.Select(g => g.Id).ToList())
+                .ConfigureAwait(false);
+            gallery = images.Select(g => new UserProfileGalleryImageDto(g.Id, g.ImageBase64,
+                g.FileName, g.ContentType, g.Size, g.Caption, g.SortOrder, g.CreatedAt,
+                g.AlbumId, likeData.Counts.GetValueOrDefault(g.Id), likeData.Mine.Contains(g.Id)))
+                .ToList();
+
+            albums = await DbContext.UserProfileGalleryAlbums
+                .Where(a => a.UserUID == requestedUid)
+                .OrderBy(a => a.SortOrder).ThenBy(a => a.CreatedAt)
+                .Select(a => new UserProfileGalleryAlbumDto(a.Id, a.Name, a.SortOrder,
+                    a.Images.Count))
+                .ToListAsync().ConfigureAwait(false);
+        }
+
+        List<UserProfileBlogPostDto>? blog = null;
+        if (show(ProfileVisibility.HideBlog))
+        {
+            // Status + scope gate: self sees everything; readers get published
+            // (or due-scheduled) posts within the visibility scope they qualify
+            // for - Public for all, Pairs for paired users only.
+            var paired = allUserPairs.Contains(requestedUid, StringComparer.Ordinal);
+            var posts = await DbContext.UserProfileBlogPosts
+                .Where(b => b.UserUID == requestedUid)
+                .OrderByDescending(b => b.Pinned).ThenByDescending(b => b.CreatedAt)
+                .Select(b => new { b.Id, b.Title, b.Body, b.Pinned, b.CreatedAt, b.UpdatedAt,
+                    b.Status, b.VisibilityScope, b.ScheduledForUtc, b.CoAuthorUidsJson,
+                    b.CommentCount, b.CommentsLocked, b.CoverMediaHash })
+                .ToListAsync().ConfigureAwait(false);
+            var nowUtc = DateTime.UtcNow;
+            blog = posts.Where(b => isSelf
+                    || PublishingService.IsVisible(b.Status, b.ScheduledForUtc, nowUtc)
+                        && (b.VisibilityScope == (int)BlogVisibilityScope.Public
+                            || (b.VisibilityScope == (int)BlogVisibilityScope.Pairs && paired)))
+                .Select(b => new UserProfileBlogPostDto(b.Id, b.Title, b.Body, b.Pinned,
+                    b.CreatedAt, b.UpdatedAt, b.Status, b.VisibilityScope, b.ScheduledForUtc,
+                    PublishingService.ParseCoAuthors(b.CoAuthorUidsJson),
+                    b.CommentCount, b.CommentsLocked, b.CoverMediaHash))
+                .ToList();
+        }
+
+        return new UserProfileExtrasDto(data.User?.ToUserData() ?? user.User, gallery, blog, albums);
+    }
+
+    /// <summary>Upserts a profile gallery image - self-owned content only.</summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<UserProfileGalleryImageDto?> UserUpsertProfileGalleryImage(
+        UserProfileGalleryImageUpdateDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto));
+        if (!string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal)) return null;
+
+        var entity = dto.Id == 0 ? null : await DbContext.UserProfileGalleryImages
+            .SingleOrDefaultAsync(g => g.Id == dto.Id && g.UserUID == UserUID).ConfigureAwait(false);
+        if (entity == null)
+        {
+            entity = new UserProfileGalleryImage { UserUID = UserUID, CreatedAt = DateTime.UtcNow };
+            await DbContext.UserProfileGalleryImages.AddAsync(entity).ConfigureAwait(false);
+        }
+        if (!string.IsNullOrEmpty(dto.ImageBase64))
+        {
+            entity.ImageBase64 = dto.ImageBase64;
+            entity.FileName = dto.FileName;
+            entity.ContentType = dto.ContentType;
+            entity.Size = dto.Size;
+        }
+        if (dto.AlbumId != entity.AlbumId)
+        {
+            var albumOk = dto.AlbumId == null || await DbContext.UserProfileGalleryAlbums
+                .AnyAsync(a => a.Id == dto.AlbumId && a.UserUID == UserUID).ConfigureAwait(false);
+            if (albumOk)
+            {
+                entity.AlbumId = dto.AlbumId;
+            }
+        }
+        entity.Caption = dto.Caption;
+        entity.SortOrder = dto.SortOrder;
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        var likes = await DbContext.UserProfileGalleryImageLikes
+            .CountAsync(l => l.ImageId == entity.Id).ConfigureAwait(false);
+        var mine = await DbContext.UserProfileGalleryImageLikes
+            .AnyAsync(l => l.ImageId == entity.Id && l.LikerUID == UserUID).ConfigureAwait(false);
+        return new UserProfileGalleryImageDto(entity.Id, entity.ImageBase64, entity.FileName,
+            entity.ContentType, entity.Size, entity.Caption, entity.SortOrder, entity.CreatedAt,
+            entity.AlbumId, likes, mine);
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task<bool> UserDeleteProfileGalleryImage(UserProfileItemDeleteDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto));
+        if (!string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal)) return false;
+        var entity = await DbContext.UserProfileGalleryImages
+            .SingleOrDefaultAsync(g => g.Id == dto.Id && g.UserUID == UserUID).ConfigureAwait(false);
+        if (entity == null) return false;
+        DbContext.UserProfileGalleryImages.Remove(entity);
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>Upserts a profile gallery album - self-owned content only.</summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<UserProfileGalleryAlbumDto?> UserUpsertProfileGalleryAlbum(
+        UserProfileGalleryAlbumUpdateDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto));
+        if (!string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal)) return null;
+
+        var entity = dto.Id == 0 ? null : await DbContext.UserProfileGalleryAlbums
+            .SingleOrDefaultAsync(a => a.Id == dto.Id && a.UserUID == UserUID).ConfigureAwait(false);
+        if (entity == null)
+        {
+            entity = new UserProfileGalleryAlbum { UserUID = UserUID, CreatedAt = DateTime.UtcNow };
+            await DbContext.UserProfileGalleryAlbums.AddAsync(entity).ConfigureAwait(false);
+        }
+        entity.Name = dto.Name;
+        entity.SortOrder = dto.SortOrder;
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        var count = await DbContext.UserProfileGalleryImages
+            .CountAsync(g => g.AlbumId == entity.Id).ConfigureAwait(false);
+        return new UserProfileGalleryAlbumDto(entity.Id, entity.Name, entity.SortOrder, count);
+    }
+
+    /// <summary>Deletes a profile album - photos inside move back to the unsorted pool.</summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<bool> UserDeleteProfileGalleryAlbum(UserProfileItemDeleteDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto));
+        if (!string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal)) return false;
+        var entity = await DbContext.UserProfileGalleryAlbums
+            .SingleOrDefaultAsync(a => a.Id == dto.Id && a.UserUID == UserUID).ConfigureAwait(false);
+        if (entity == null) return false;
+        DbContext.UserProfileGalleryAlbums.Remove(entity);
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Toggles the caller's like on a profile photo - allowed for the owner
+    /// and paired users, mirroring <see cref="UserGetProfileExtras"/> gating.
+    /// </summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<UserProfileGalleryImageLikeResultDto?> UserToggleProfileGalleryImageLike(
+        UserProfileGalleryImageLikeDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto));
+        if (!string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal)) return null;
+
+        var image = await DbContext.UserProfileGalleryImages
+            .SingleOrDefaultAsync(g => g.Id == dto.ImageId).ConfigureAwait(false);
+        if (image == null) return null;
+
+        var allUserPairs = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
+        var isSelf = string.Equals(image.UserUID, UserUID, StringComparison.Ordinal);
+        if (!isSelf && !allUserPairs.Contains(image.UserUID, StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        var like = await DbContext.UserProfileGalleryImageLikes
+            .FindAsync(dto.ImageId, UserUID).ConfigureAwait(false);
+        var likedNow = like == null;
+        if (likedNow)
+        {
+            await DbContext.UserProfileGalleryImageLikes.AddAsync(
+                new UserProfileGalleryImageLike
+                {
+                    ImageId = dto.ImageId, LikerUID = UserUID, CreatedAt = DateTime.UtcNow
+                }).ConfigureAwait(false);
+        }
+        else
+        {
+            DbContext.UserProfileGalleryImageLikes.Remove(like);
+        }
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        var total = await DbContext.UserProfileGalleryImageLikes
+            .CountAsync(l => l.ImageId == dto.ImageId).ConfigureAwait(false);
+        return new UserProfileGalleryImageLikeResultDto(dto.ImageId, likedNow, total);
+    }
+
+    /// <summary>Like counts plus the caller's own likes for a set of profile photos.</summary>
+    private async Task<(Dictionary<long, int> Counts, HashSet<long> Mine)> GetProfileGalleryLikeData(
+        List<long> imageIds)
+    {
+        var counts = await DbContext.UserProfileGalleryImageLikes
+            .Where(l => imageIds.Contains(l.ImageId))
+            .GroupBy(l => l.ImageId)
+            .Select(x => new { x.Key, Count = x.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count)
+            .ConfigureAwait(false);
+        var mine = (await DbContext.UserProfileGalleryImageLikes
+            .Where(l => l.LikerUID == UserUID && imageIds.Contains(l.ImageId))
+            .Select(l => l.ImageId)
+            .ToListAsync().ConfigureAwait(false)).ToHashSet();
+        return (counts, mine);
+    }
+
+    /// <summary>Upserts a profile blog post - self-owned content only.</summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<UserProfileBlogPostDto?> UserUpsertProfileBlogPost(UserProfileBlogPostUpdateDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto));
+        if (!string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal)) return null;
+
+        var entity = dto.Id == 0 ? null : await DbContext.UserProfileBlogPosts
+            .SingleOrDefaultAsync(b => b.Id == dto.Id).ConfigureAwait(false);
+        if (entity == null)
+        {
+            entity = new UserProfileBlogPost { UserUID = UserUID, CreatedAt = DateTime.UtcNow };
+            await DbContext.UserProfileBlogPosts.AddAsync(entity).ConfigureAwait(false);
+        }
+        // Co-author write right: the owner or a listed co-author may edit -
+        // only the owner owns the row (delete stays owner-gated).
+        var coAuthors = PublishingService.ParseCoAuthors(entity.CoAuthorUidsJson);
+        var isOwner = string.Equals(entity.UserUID, UserUID, StringComparison.Ordinal);
+        var isCoAuthor = coAuthors.Contains(UserUID, StringComparer.Ordinal);
+        if (!isOwner && !isCoAuthor) return null;
+        // Title is optional - but a post needs a title OR a body.
+        if (string.IsNullOrWhiteSpace(dto.Title)
+            && string.IsNullOrWhiteSpace(dto.Body)) return null;
+
+        var resolution = _publishing.ResolveBlogWrite(isOwner, isCoAuthor,
+            dto.StatusIntent.HasValue ? (ContentPublishStatus)dto.StatusIntent.Value
+                : (ContentPublishStatus)entity.Status == ContentPublishStatus.Draft
+                    ? ContentPublishStatus.Published
+                    : (ContentPublishStatus)entity.Status,
+            (ContentPublishStatus)entity.Status);
+        if (resolution.Verdict == PublishingService.WriteVerdict.Denied) return null;
+
+        entity.Title = dto.Title;
+        entity.Body = dto.Body;
+        entity.Pinned = dto.Pinned;
+        var prev = (ContentPublishStatus)entity.Status;
+        entity.Status = (int)resolution.EffectiveStatus;
+        entity.ScheduledForUtc = resolution.EffectiveStatus == ContentPublishStatus.Scheduled
+            ? dto.ScheduledForUtc ?? entity.ScheduledForUtc
+            : null;
+        if (dto.VisibilityScope.HasValue)
+        {
+            entity.VisibilityScope = Math.Clamp(dto.VisibilityScope.Value,
+                (int)BlogVisibilityScope.Public, (int)BlogVisibilityScope.Private);
+        }
+        if (isOwner && dto.CoAuthorUids != null)
+        {
+            entity.CoAuthorUidsJson = dto.CoAuthorUids.Count == 0
+                ? null
+                : SerializeJson(dto.CoAuthorUids);
+        }
+        if (dto.CoverMediaHash != null)
+        {
+            entity.CoverMediaHash = dto.CoverMediaHash.Length == 0 ? null : dto.CoverMediaHash;
+        }
+        entity.UpdatedAt = DateTime.UtcNow;
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        await PushUserProfileChangedAsync(UserUID).ConfigureAwait(false);
+        return new UserProfileBlogPostDto(entity.Id, entity.Title, entity.Body,
+            entity.Pinned, entity.CreatedAt, entity.UpdatedAt, entity.Status,
+            entity.VisibilityScope, entity.ScheduledForUtc,
+            PublishingService.ParseCoAuthors(entity.CoAuthorUidsJson),
+            entity.CommentCount, entity.CommentsLocked, entity.CoverMediaHash);
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task<bool> UserDeleteProfileBlogPost(UserProfileItemDeleteDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto));
+        if (!string.Equals(dto.User.UID, UserUID, StringComparison.Ordinal)) return false;
+        var entity = await DbContext.UserProfileBlogPosts
+            .SingleOrDefaultAsync(b => b.Id == dto.Id && b.UserUID == UserUID).ConfigureAwait(false);
+        if (entity == null) return false;
+
+        // Target rows hang off the post id - comments, their reactions and
+        // reports would orphan on a hard delete, so they go in the same txn.
+        var commentIds = await DbContext.CommunityComments
+            .Where(c => c.TargetKind == (int)CommentTargetKind.Blog && c.TargetId == dto.Id)
+            .Select(c => c.Id).ToListAsync().ConfigureAwait(false);
+        if (commentIds.Count > 0)
+        {
+            DbContext.CommunityComments.RemoveRange(DbContext.CommunityComments
+                .Where(c => c.TargetKind == (int)CommentTargetKind.Blog && c.TargetId == dto.Id));
+            DbContext.CommunityReactions.RemoveRange(DbContext.CommunityReactions
+                .Where(r => r.TargetKind == (int)ReactionTargetKind.Comment
+                    && commentIds.Contains(r.TargetId)));
+            DbContext.CommunityReports.RemoveRange(DbContext.CommunityReports
+                .Where(r => r.TargetKind == (int)ReportTargetKind.Comment
+                    && commentIds.Contains(r.TargetId)));
+        }
+        DbContext.CommunityReactions.RemoveRange(DbContext.CommunityReactions
+            .Where(r => r.TargetKind == (int)ReactionTargetKind.Blog && r.TargetId == dto.Id));
+        DbContext.CommunityReports.RemoveRange(DbContext.CommunityReports
+            .Where(r => r.TargetKind == (int)ReportTargetKind.Blog && r.TargetId == dto.Id));
+        DbContext.UserProfileBlogPosts.Remove(entity);
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        await PushUserProfileChangedAsync(UserUID).ConfigureAwait(false);
+        return true;
     }
 
     [Authorize(Policy = "Identified")]
@@ -1073,7 +1442,12 @@ public partial class SpheneHub
 
             if (dto.Visibility != null)
             {
-                existingData.ProfileVisibility = dto.Visibility.Value & 0x1F;
+                existingData.ProfileVisibility = dto.Visibility.Value & 0xFF;
+            }
+
+            if (dto.Links != null)
+            {
+                existingData.LinksJson = SerializeJson(dto.Links);
             }
 
             if (string.Equals("", dto.RowImageBase64, StringComparison.OrdinalIgnoreCase))
