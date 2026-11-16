@@ -44,6 +44,15 @@ public class ServerConfiguration : SpheneConfigurationBase
 
     [RemoteConfiguration]
     public string SupporterIconDirectory { get; set; } = "supporter-icons";
+    /// <summary>Full-chat lockdown: when true the plaintext
+    /// UserSendChatMessage endpoint rejects every send. Leave off during
+    /// rollout - sealed-capable recipients already enforce E2EE per-target.</summary>
+    [RemoteConfiguration]
+    public bool RequireE2EEChat { get; set; } = false;
+
+    [RemoteConfiguration]
+    public int ChatE2EEMaxDevicesPerUser { get; set; } = 8;
+
     public bool RunPermissionCleanupOnStartup { get; set; } = true;
     public int HubExecutionConcurrencyFilter { get; set; } = 50;
 

@@ -635,6 +635,36 @@ namespace SpheneServer.Migrations
                     b.ToTable("chara_data_poses", (string)null);
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.ChatDeviceKey", b =>
+                {
+                    b.Property<string>("UserUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("user_uid");
+
+                    b.Property<string>("DeviceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("device_id");
+
+                    b.Property<byte[]>("PublicKey")
+                        .HasColumnType("bytea")
+                        .HasColumnName("public_key");
+
+                    b.Property<DateTime>("PublishedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at_utc");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at_utc");
+
+                    b.HasKey("UserUID", "DeviceId")
+                        .HasName("pk_chat_device_keys");
+
+                    b.ToTable("chat_device_keys", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -642,10 +672,23 @@ namespace SpheneServer.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<byte>("Kind")
+                        .HasColumnType("smallint")
+                        .HasColumnName("kind");
+
                     b.Property<string>("Message")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("message");
+
+                    b.Property<DateTime?>("MigratedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("migrated_at_utc");
+
+                    b.Property<string>("MigratedByUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("migrated_by_uid");
 
                     b.Property<DateTime?>("ReadAt")
                         .HasColumnType("timestamp with time zone")
@@ -673,6 +716,49 @@ namespace SpheneServer.Migrations
                         .HasDatabaseName("ix_chat_messages_sender_uid");
 
                     b.ToTable("chat_messages", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.ChatMessageCipher", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
+                    b.Property<string>("ForDeviceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("for_device_id");
+
+                    b.Property<byte[]>("Blob")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob");
+
+                    b.Property<string>("ForUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("for_uid");
+
+                    b.Property<string>("SealerDeviceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sealer_device_id");
+
+                    b.Property<byte[]>("SealerPublicKey")
+                        .HasColumnType("bytea")
+                        .HasColumnName("sealer_public_key");
+
+                    b.Property<string>("SealerUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("sealer_uid");
+
+                    b.HasKey("MessageId", "ForDeviceId")
+                        .HasName("pk_chat_message_ciphers");
+
+                    b.HasIndex("ForUID")
+                        .HasDatabaseName("ix_chat_message_ciphers_for_uid");
+
+                    b.ToTable("chat_message_ciphers", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.ClientPair", b =>
@@ -3146,6 +3232,18 @@ namespace SpheneServer.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.ChatDeviceKey", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_chat_device_keys_users_user_uid");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("SpheneShared.Models.ChatMessage", b =>
                 {
                     b.HasOne("SpheneShared.Models.User", "Recipient")
@@ -3161,6 +3259,18 @@ namespace SpheneServer.Migrations
                     b.Navigation("Recipient");
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.ChatMessageCipher", b =>
+                {
+                    b.HasOne("SpheneShared.Models.ChatMessage", "Message")
+                        .WithMany("Ciphers")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_chat_message_ciphers_chat_messages_message_id");
+
+                    b.Navigation("Message");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.ClientPair", b =>
@@ -3716,6 +3826,11 @@ namespace SpheneServer.Migrations
                     b.Navigation("OriginalFiles");
 
                     b.Navigation("Poses");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.ChatMessage", b =>
+                {
+                    b.Navigation("Ciphers");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.SyncshellCommunityEvent", b =>

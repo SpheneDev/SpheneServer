@@ -61,6 +61,8 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private readonly int _maxCharaDataByUserVanity;
     private readonly bool _supporterFeaturesEnabled;
     private readonly string _supporterIconDirectory;
+    private readonly bool _requireE2EEChat;
+    private readonly int _chatE2EEMaxDevices;
 
     public SpheneHub(SpheneMetrics SpheneMetrics,
         IDbContextFactory<SpheneDbContext> spheneDbContextFactory, ILogger<SpheneHub> logger, SystemInfoService systemInfoService,
@@ -87,6 +89,8 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         _maxCharaDataByUserVanity = configuration.GetValueOrDefault(nameof(ServerConfiguration.MaxCharaDataByUserVanity), 50);
         _supporterFeaturesEnabled = configuration.GetValueOrDefault(nameof(ServerConfiguration.EnableSupporterFeatures), false);
         _supporterIconDirectory = configuration.GetValueOrDefault(nameof(ServerConfiguration.SupporterIconDirectory), "supporter-icons");
+        _requireE2EEChat = configuration.GetValueOrDefault(nameof(ServerConfiguration.RequireE2EEChat), false);
+        _chatE2EEMaxDevices = configuration.GetValueOrDefault(nameof(ServerConfiguration.ChatE2EEMaxDevicesPerUser), 8);
         _contextAccessor = contextAccessor;
         _redis = redisDb;
         _onlineSyncedPairCacheService = onlineSyncedPairCacheService;

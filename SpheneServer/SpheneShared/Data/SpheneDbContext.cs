@@ -75,6 +75,8 @@ public class SpheneDbContext : DbContext
     public DbSet<SyncshellCommunityGalleryImage> SyncshellCommunityGallery { get; set; }
     public DbSet<UserBlock> UserBlocks { get; set; }
     public DbSet<ChatMessage> ChatMessages { get; set; }
+    public DbSet<ChatMessageCipher> ChatMessageCiphers { get; set; }
+    public DbSet<ChatDeviceKey> ChatDeviceKeys { get; set; }
     public DbSet<SyncshellCommunityGalleryAlbum> SyncshellCommunityGalleryAlbums { get; set; }
     public DbSet<SyncshellCommunityStaffRole> SyncshellCommunityStaffRoles { get; set; }
     public DbSet<SyncshellCommunityStaffAssignment> SyncshellCommunityStaffAssignments { get; set; }
@@ -386,5 +388,16 @@ public class SpheneDbContext : DbContext
         mb.Entity<CommunityModerationLog>().HasIndex(l => new { l.TargetKind, l.TargetId });
         mb.Entity<CommunityModerationLog>().HasIndex(l => l.ActorUid);
         mb.Entity<CommunityModerationLog>().HasIndex(l => l.GroupGID);
+
+        mb.Entity<ChatMessageCipher>().ToTable("chat_message_ciphers");
+        mb.Entity<ChatMessageCipher>().HasKey(c => new { c.MessageId, c.ForDeviceId });
+        mb.Entity<ChatMessageCipher>().HasOne(c => c.Message).WithMany(m => m.Ciphers)
+            .HasForeignKey(c => c.MessageId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ChatMessageCipher>().HasIndex(c => c.ForUID);
+
+        mb.Entity<ChatDeviceKey>().ToTable("chat_device_keys");
+        mb.Entity<ChatDeviceKey>().HasKey(k => new { k.UserUID, k.DeviceId });
+        mb.Entity<ChatDeviceKey>().HasOne(k => k.User).WithMany()
+            .HasForeignKey(k => k.UserUID).OnDelete(DeleteBehavior.Cascade);
     }
 }
