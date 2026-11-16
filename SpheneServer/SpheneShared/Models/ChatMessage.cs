@@ -16,6 +16,9 @@ public class ChatMessage
     [MaxLength(500)]
     public string? Message { get; set; }
     public DateTime SentAt { get; set; }
+    /// <summary>Recipient account acknowledged receipt (push or history
+    /// fetch) - drives the delivered state between sent and read.</summary>
+    public DateTime? DeliveredAt { get; set; }
     public DateTime? ReadAt { get; set; }
 
     /// <summary>0 = plaintext, 1 = sealed at send time, 2 = legacy plaintext

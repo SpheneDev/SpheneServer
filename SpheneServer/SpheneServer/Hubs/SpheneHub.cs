@@ -444,5 +444,12 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         await Clients.Caller.Client_UserReceiveChatMessage(dto).ConfigureAwait(false);
     }
 
+    // Receipt pushes are server→client only - a caller must not be able to
+    // forge "the peer read/delivered my messages" on its own view, so the
+    // hub-callable side intentionally does nothing.
+    public Task Client_UserChatDelivered(UserDto reader) => Task.CompletedTask;
+
+    public Task Client_UserChatRead(UserDto reader) => Task.CompletedTask;
+
     // Client_UserAckOtherUpdate method removed - AckOther is controlled by other player's AckYou
 }

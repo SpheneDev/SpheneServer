@@ -285,6 +285,7 @@ public partial class SpheneHub
             {
                 Kind = kind,
                 MigratedByUid = m.MigratedByUID,
+                Delivered = m.DeliveredAt != null || m.ReadAt != null,
             };
             if (kind != ChatMessageKind.Plaintext
                 && byMessage.TryGetValue(m.Id, out var list))
@@ -293,6 +294,45 @@ public partial class SpheneHub
             }
             return dto;
         }).ToList();
+    }
+
+    /// <summary>Unread incoming messages grouped by sender, restricted to
+    /// conversations the caller can still open (paired and unblocked).
+    /// Connect-time discovery for messages delivered while offline.</summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<List<ChatUnreadDto>> UserGetChatUnread()
+    {
+        var grouped = await DbContext.ChatMessages.AsNoTracking()
+            .Where(m => m.RecipientUID == UserUID && m.ReadAt == null)
+            .GroupBy(m => m.SenderUID)
+            .Select(g => new { SenderUid = g.Key, Count = g.Count() })
+            .ToListAsync().ConfigureAwait(false);
+        if (grouped.Count == 0)
+        {
+            return [];
+        }
+        var uids = grouped.Select(g => g.SenderUid).ToList();
+        var reachable = new HashSet<string>(
+            await DbContext.ClientPairs.AsNoTracking()
+                .Where(p => p.UserUID == UserUID && uids.Contains(p.OtherUserUID))
+                .Select(p => p.OtherUserUID)
+                .ToListAsync().ConfigureAwait(false), StringComparer.Ordinal);
+        var blocked = await DbContext.UserBlocks.AsNoTracking()
+            .Where(b => (b.UserUID == UserUID && uids.Contains(b.BlockedUserUID))
+                || (b.BlockedUserUID == UserUID && uids.Contains(b.UserUID)))
+            .Select(b => b.UserUID == UserUID ? b.BlockedUserUID : b.UserUID)
+            .ToListAsync().ConfigureAwait(false);
+        reachable.ExceptWith(blocked);
+        var users = await DbContext.Users.AsNoTracking()
+            .Where(u => uids.Contains(u.UID))
+            .ToListAsync().ConfigureAwait(false);
+        var byUid = users.ToDictionary(u => u.UID, u => u, StringComparer.Ordinal);
+        return grouped
+            .Where(g => reachable.Contains(g.SenderUid)
+                && byUid.ContainsKey(g.SenderUid))
+            .Select(g => new ChatUnreadDto(
+                byUid[g.SenderUid].ToUserData(), g.Count))
+            .ToList();
     }
 
     [Authorize(Policy = "Identified")]
@@ -310,8 +350,37 @@ public partial class SpheneHub
         foreach (var m in unread)
         {
             m.ReadAt = now;
+            m.DeliveredAt ??= now;
         }
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        // Read receipt: tell the sender their messages were opened.
+        await Clients.User(other.User.UID)
+            .Client_UserChatRead(new UserDto(new UserData(UserUID)))
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Delivery receipt: the account received the rows (push or
+    /// history fetch) but has not necessarily opened the chat.</summary>
+    [Authorize(Policy = "Identified")]
+    public async Task UserMarkChatDelivered(UserDto other)
+    {
+        var undelivered = await DbContext.ChatMessages
+            .Where(m => m.SenderUID == other.User.UID
+                && m.RecipientUID == UserUID && m.DeliveredAt == null)
+            .ToListAsync().ConfigureAwait(false);
+        if (undelivered.Count == 0)
+        {
+            return;
+        }
+        var now = DateTime.UtcNow;
+        foreach (var m in undelivered)
+        {
+            m.DeliveredAt = now;
+        }
+        await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        await Clients.User(other.User.UID)
+            .Client_UserChatDelivered(new UserDto(new UserData(UserUID)))
+            .ConfigureAwait(false);
     }
 
     [Authorize(Policy = "Identified")]

@@ -672,6 +672,10 @@ namespace SpheneServer.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("delivered_at");
+
                     b.Property<byte>("Kind")
                         .HasColumnType("smallint")
                         .HasColumnName("kind");
