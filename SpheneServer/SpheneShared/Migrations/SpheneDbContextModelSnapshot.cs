@@ -665,6 +665,32 @@ namespace SpheneServer.Migrations
                     b.ToTable("chat_device_keys", (string)null);
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.ChatKeyBackup", b =>
+                {
+                    b.Property<string>("UserUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("user_uid");
+
+                    b.Property<byte[]>("Blob")
+                        .HasColumnType("bytea")
+                        .HasColumnName("blob");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.HasKey("UserUID")
+                        .HasName("pk_chat_key_backups");
+
+                    b.ToTable("chat_key_backups", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3244,6 +3270,18 @@ namespace SpheneServer.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_chat_device_keys_users_user_uid");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.ChatKeyBackup", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_chat_key_backups_users_user_uid");
 
                     b.Navigation("User");
                 });

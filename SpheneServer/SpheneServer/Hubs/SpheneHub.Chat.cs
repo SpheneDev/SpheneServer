@@ -18,6 +18,9 @@ public partial class SpheneHub
     private const int MaxChatCipherBlobBytes = 4096;
     /// <summary>Recipient + sender devices both get copies: 8 + 8 worst case.</summary>
     private const int MaxChatCipherCopies = 16;
+    /// <summary>Bound on the encrypted key-backup blob - a device keyring and
+    /// TOFU baseline stay orders of magnitude below this.</summary>
+    private const int MaxChatKeyBackupBytes = 128 * 1024;
 
     [Authorize(Policy = "Identified")]
     public async Task UserBlock(UserDto dto)
@@ -533,6 +536,107 @@ public partial class SpheneHub
                 .ConfigureAwait(false);
         }
         return true;
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task<ChatKeyBackupResult> UserPutChatKeyBackup(byte[] blob,
+        long expectedRevision)
+    {
+        // Invalid writes never consume a revision - the conflict payload
+        // still reports the current state so a well-meaning client resyncs.
+        if (blob == null || blob.Length == 0 || blob.Length > MaxChatKeyBackupBytes
+            || expectedRevision < 0)
+        {
+            var invalid = await LoadChatKeyBackupAsync(UserUID)
+                .ConfigureAwait(false);
+            return new ChatKeyBackupResult(false, invalid?.Revision ?? 0,
+                invalid?.Blob);
+        }
+        if (expectedRevision == 0)
+        {
+            return await TryCreateChatKeyBackupAsync(blob)
+                .ConfigureAwait(false);
+        }
+        var tracked = await DbContext.ChatKeyBackups
+            .SingleOrDefaultAsync(k => k.UserUID == UserUID)
+            .ConfigureAwait(false);
+        if (tracked == null || tracked.Revision != expectedRevision)
+        {
+            return new ChatKeyBackupResult(false, tracked?.Revision ?? 0,
+                tracked?.Blob);
+        }
+        // Revision is a concurrency token: the UPDATE carries the original
+        // value in its WHERE clause, so a racing writer makes this save
+        // affect zero rows and throw - the stale write never lands.
+        tracked.Blob = blob;
+        tracked.Revision = expectedRevision + 1;
+        tracked.UpdatedAtUtc = DateTime.UtcNow;
+        try
+        {
+            await DbContext.SaveChangesAsync().ConfigureAwait(false);
+            return new ChatKeyBackupResult(true, tracked.Revision, null);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            DbContext.Entry(tracked).State = EntityState.Detached;
+            var raced = await LoadChatKeyBackupAsync(UserUID)
+                .ConfigureAwait(false);
+            return new ChatKeyBackupResult(false, raced?.Revision ?? 0,
+                raced?.Blob);
+        }
+    }
+
+    /// <summary>Create-only write: lands solely while no row exists. A
+    /// concurrent create or an already-stored row resolves to a conflict
+    /// carrying the real current state.</summary>
+    private async Task<ChatKeyBackupResult> TryCreateChatKeyBackupAsync(
+        byte[] blob)
+    {
+        var existing = await LoadChatKeyBackupAsync(UserUID)
+            .ConfigureAwait(false);
+        if (existing != null)
+        {
+            return new ChatKeyBackupResult(false, existing.Revision,
+                existing.Blob);
+        }
+        var user = await DbContext.Users.SingleAsync(u => u.UID == UserUID)
+            .ConfigureAwait(false);
+        var row = new ChatKeyBackup
+        {
+            User = user,
+            UserUID = UserUID,
+            Blob = blob,
+            Revision = 1,
+            UpdatedAtUtc = DateTime.UtcNow,
+        };
+        DbContext.ChatKeyBackups.Add(row);
+        try
+        {
+            await DbContext.SaveChangesAsync().ConfigureAwait(false);
+            return new ChatKeyBackupResult(true, 1, null);
+        }
+        catch (DbUpdateException)
+        {
+            // A concurrent create claimed the row - report it so the
+            // caller merges against real state instead of guessing.
+            DbContext.Entry(row).State = EntityState.Detached;
+            var raced = await LoadChatKeyBackupAsync(UserUID)
+                .ConfigureAwait(false);
+            return new ChatKeyBackupResult(false, raced?.Revision ?? 0,
+                raced?.Blob);
+        }
+    }
+
+    [Authorize(Policy = "Identified")]
+    public async Task<ChatKeyBackupDto> UserGetChatKeyBackup()
+        => await LoadChatKeyBackupAsync(UserUID).ConfigureAwait(false);
+
+    private async Task<ChatKeyBackupDto> LoadChatKeyBackupAsync(string uid)
+    {
+        return await DbContext.ChatKeyBackups.AsNoTracking()
+            .Where(k => k.UserUID == uid)
+            .Select(k => new ChatKeyBackupDto(k.Blob, k.Revision))
+            .SingleOrDefaultAsync().ConfigureAwait(false);
     }
 
     /// <summary>Copies must address exactly the active devices of caller and

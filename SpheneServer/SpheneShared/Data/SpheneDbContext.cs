@@ -77,6 +77,7 @@ public class SpheneDbContext : DbContext
     public DbSet<ChatMessage> ChatMessages { get; set; }
     public DbSet<ChatMessageCipher> ChatMessageCiphers { get; set; }
     public DbSet<ChatDeviceKey> ChatDeviceKeys { get; set; }
+    public DbSet<ChatKeyBackup> ChatKeyBackups { get; set; }
     public DbSet<SyncshellCommunityGalleryAlbum> SyncshellCommunityGalleryAlbums { get; set; }
     public DbSet<SyncshellCommunityStaffRole> SyncshellCommunityStaffRoles { get; set; }
     public DbSet<SyncshellCommunityStaffAssignment> SyncshellCommunityStaffAssignments { get; set; }
@@ -398,6 +399,12 @@ public class SpheneDbContext : DbContext
         mb.Entity<ChatDeviceKey>().ToTable("chat_device_keys");
         mb.Entity<ChatDeviceKey>().HasKey(k => new { k.UserUID, k.DeviceId });
         mb.Entity<ChatDeviceKey>().HasOne(k => k.User).WithMany()
+            .HasForeignKey(k => k.UserUID).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ChatKeyBackup>().ToTable("chat_key_backups");
+        mb.Entity<ChatKeyBackup>().HasKey(k => k.UserUID);
+        mb.Entity<ChatKeyBackup>().Property(k => k.Revision).IsConcurrencyToken();
+        mb.Entity<ChatKeyBackup>().HasOne(k => k.User).WithMany()
             .HasForeignKey(k => k.UserUID).OnDelete(DeleteBehavior.Cascade);
     }
 }
