@@ -40,6 +40,10 @@ public class UserProfileBlogPost : ICommentThreadHost
     /// <summary>Owner/platform lock - comment writes rejected while set.</summary>
     public bool CommentsLocked { get; set; }
 
+    /// <summary>Unique non-owner viewers - maintained under the mark-viewed
+    /// insert txn so reads stay a plain column.</summary>
+    public int ViewCount { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

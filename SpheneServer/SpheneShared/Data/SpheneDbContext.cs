@@ -87,6 +87,7 @@ public class SpheneDbContext : DbContext
     public DbSet<UserProfileGalleryAlbum> UserProfileGalleryAlbums { get; set; }
     public DbSet<UserProfileGalleryImageLike> UserProfileGalleryImageLikes { get; set; }
     public DbSet<UserProfileBlogPost> UserProfileBlogPosts { get; set; }
+    public DbSet<UserProfileBlogPostView> UserProfileBlogPostViews { get; set; }
     public DbSet<ModFile> ModFiles { get; set; }
     public DbSet<ModDownloadHistory> ModDownloadHistory { get; set; }
     public DbSet<ModShareHistory> ModShareHistory { get; set; }
@@ -171,6 +172,11 @@ public class SpheneDbContext : DbContext
         mb.Entity<UserProfileGalleryImageLike>().HasIndex(l => l.LikerUID);
         mb.Entity<UserProfileBlogPost>().ToTable("user_profile_blog_posts");
         mb.Entity<UserProfileBlogPost>().HasIndex(b => b.UserUID);
+        mb.Entity<UserProfileBlogPostView>().ToTable("user_profile_blog_post_views");
+        mb.Entity<UserProfileBlogPostView>().HasKey(v => new { v.PostId, v.ViewerUID });
+        mb.Entity<UserProfileBlogPostView>().HasOne(v => v.Post).WithMany()
+            .HasForeignKey(v => v.PostId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<UserProfileBlogPostView>().HasIndex(v => v.ViewerUID);
         mb.Entity<UserPermissionSet>().ToTable("user_permission_sets");
         mb.Entity<UserPermissionSet>().HasKey(u => new { u.UserUID, u.OtherUserUID });
         mb.Entity<UserPermissionSet>().HasIndex(c => c.UserUID);

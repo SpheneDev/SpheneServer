@@ -2880,6 +2880,10 @@ namespace SpheneServer.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("user_uid");
 
+                    b.Property<int>("ViewCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("view_count");
+
                     b.Property<int>("VisibilityScope")
                         .HasColumnType("integer")
                         .HasColumnName("visibility_scope");
@@ -2891,6 +2895,30 @@ namespace SpheneServer.Migrations
                         .HasDatabaseName("ix_user_profile_blog_posts_user_uid");
 
                     b.ToTable("user_profile_blog_posts", (string)null);
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileBlogPostView", b =>
+                {
+                    b.Property<long>("PostId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("post_id");
+
+                    b.Property<string>("ViewerUID")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("viewer_uid");
+
+                    b.Property<DateTime>("ViewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("viewed_at");
+
+                    b.HasKey("PostId", "ViewerUID")
+                        .HasName("pk_user_profile_blog_post_views");
+
+                    b.HasIndex("ViewerUID")
+                        .HasDatabaseName("ix_user_profile_blog_post_views_viewer_uid");
+
+                    b.ToTable("user_profile_blog_post_views", (string)null);
                 });
 
             modelBuilder.Entity("SpheneShared.Models.UserProfileData", b =>
@@ -3794,6 +3822,18 @@ namespace SpheneServer.Migrations
                         .HasConstraintName("fk_user_profile_blog_posts_users_user_uid");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserProfileBlogPostView", b =>
+                {
+                    b.HasOne("SpheneShared.Models.UserProfileBlogPost", "Post")
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_profile_blog_post_views_user_profile_blog_posts_post_id");
+
+                    b.Navigation("Post");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.UserProfileData", b =>

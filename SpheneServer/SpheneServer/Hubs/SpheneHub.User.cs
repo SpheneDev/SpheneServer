@@ -542,7 +542,7 @@ public partial class SpheneHub
                 .OrderByDescending(b => b.Pinned).ThenByDescending(b => b.CreatedAt)
                 .Select(b => new { b.Id, b.Title, b.Body, b.Pinned, b.CreatedAt, b.UpdatedAt,
                     b.Status, b.VisibilityScope, b.ScheduledForUtc, b.CoAuthorUidsJson,
-                    b.CommentCount, b.CommentsLocked, b.CoverMediaHash })
+                    b.CommentCount, b.CommentsLocked, b.CoverMediaHash, b.ViewCount })
                 .ToListAsync().ConfigureAwait(false);
             var nowUtc = DateTime.UtcNow;
             blog = posts.Where(b => isSelf
@@ -552,7 +552,7 @@ public partial class SpheneHub
                 .Select(b => new UserProfileBlogPostDto(b.Id, b.Title, b.Body, b.Pinned,
                     b.CreatedAt, b.UpdatedAt, b.Status, b.VisibilityScope, b.ScheduledForUtc,
                     PublishingService.ParseCoAuthors(b.CoAuthorUidsJson),
-                    b.CommentCount, b.CommentsLocked, b.CoverMediaHash))
+                    b.CommentCount, b.CommentsLocked, b.CoverMediaHash, b.ViewCount))
                 .ToList();
         }
 
@@ -774,7 +774,51 @@ public partial class SpheneHub
             entity.Pinned, entity.CreatedAt, entity.UpdatedAt, entity.Status,
             entity.VisibilityScope, entity.ScheduledForUtc,
             PublishingService.ParseCoAuthors(entity.CoAuthorUidsJson),
-            entity.CommentCount, entity.CommentsLocked, entity.CoverMediaHash);
+            entity.CommentCount, entity.CommentsLocked, entity.CoverMediaHash,
+            entity.ViewCount);
+    }
+
+    /// <summary>Marks one Chronicle as seen by the caller - deduplicated per
+    /// (post, viewer) in user_profile_blog_post_views so repeat opens never
+    /// inflate the count; the owner's own reads and posts outside the
+    /// caller's visibility scope never count.</summary>
+    [Authorize(Policy = "Identified")]
+    public async Task UserMarkBlogPostViewed(long postId)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(postId));
+        var post = await DbContext.UserProfileBlogPosts.AsNoTracking()
+            .Where(b => b.Id == postId)
+            .Select(b => new { b.UserUID, b.Status, b.ScheduledForUtc, b.VisibilityScope })
+            .SingleOrDefaultAsync().ConfigureAwait(false);
+        if (post == null) return;
+        if (string.Equals(post.UserUID, UserUID, StringComparison.Ordinal)) return;
+
+        // Same read gate as UserGetProfileExtras: published (or due-scheduled)
+        // within scope - Public for everyone, Pairs for paired users only.
+        if (!PublishingService.IsVisible(post.Status, post.ScheduledForUtc, DateTime.UtcNow))
+        {
+            return;
+        }
+        if (post.VisibilityScope != (int)BlogVisibilityScope.Public)
+        {
+            if (post.VisibilityScope != (int)BlogVisibilityScope.Pairs) return;
+            var paired = (await GetAllPairedUnpausedUsers().ConfigureAwait(false))
+                .Contains(post.UserUID, StringComparer.Ordinal);
+            if (!paired) return;
+        }
+
+        // Dedup insert first - ON CONFLICT keeps the (post, viewer) pair
+        // unique, so only the row that wins the insert bumps the counter.
+        var inserted = await DbContext.Database.ExecuteSqlRawAsync(
+            "INSERT INTO user_profile_blog_post_views (post_id, viewer_uid, viewed_at)"
+            + " VALUES ({0}, {1}, {2}) ON CONFLICT (post_id, viewer_uid) DO NOTHING",
+            postId, UserUID, DateTime.UtcNow).ConfigureAwait(false);
+        if (inserted > 0)
+        {
+            await DbContext.Database.ExecuteSqlRawAsync(
+                "UPDATE user_profile_blog_posts SET view_count = view_count + 1 WHERE id = {0}",
+                postId).ConfigureAwait(false);
+        }
     }
 
     [Authorize(Policy = "Identified")]
