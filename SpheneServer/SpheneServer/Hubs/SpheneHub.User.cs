@@ -466,7 +466,10 @@ public partial class SpheneHub
             show(ProfileVisibility.HideStatusMessage) ? data.StatusMessage : null,
             show(ProfileVisibility.HideTags) ? data.ProfileTags : null,
             show(ProfileVisibility.HideBanner) ? data.Base64BannerImage : null,
-            data.ProfileTheme, data.ProfileVisibility, data.Base64RowImage,
+            Utils.Extensions.NormalizeThemeForSupporter(data.ProfileTheme,
+                Utils.Extensions.IsSupporterEffective(data.User)),
+            data.ProfileVisibility,
+            Utils.Extensions.IsSupporterEffective(data.User) ? data.Base64RowImage : null,
             show(ProfileVisibility.HideLinks)
                 ? DeserializeJson<List<UserProfileLinkDto>>(data.LinksJson) : null);
     }
@@ -1369,11 +1372,21 @@ public partial class SpheneHub
             return;
         }
 
+        // resolved once - gates the row-image upload and decides whether
+        // supporter-only theme fields survive the write below
+        var effectiveSupporter = true;
+        if (!string.IsNullOrEmpty(dto.RowImageBase64) || dto.Theme != null)
+        {
+            var supporter = await DbContext.Users.Where(u => u.UID == UserUID)
+                .Select(u => new { u.IsSupporter, u.SupporterTrialStartUtc })
+                .SingleOrDefaultAsync().ConfigureAwait(false);
+            effectiveSupporter = supporter != null
+                && Utils.Extensions.IsSupporterEffective(supporter.IsSupporter, supporter.SupporterTrialStartUtc);
+        }
+
         if (!string.IsNullOrEmpty(dto.RowImageBase64))
         {
-            var isSupporter = await DbContext.Users.Where(u => u.UID == UserUID)
-                .Select(u => u.IsSupporter).SingleOrDefaultAsync().ConfigureAwait(false);
-            if (!isSupporter)
+            if (!effectiveSupporter)
             {
                 await Clients.Caller.Client_ReceiveServerMessage(MessageSeverity.Error, "Animated row backgrounds are a supporter feature.").ConfigureAwait(false);
                 return;
@@ -1437,7 +1450,8 @@ public partial class SpheneHub
 
             if (dto.Theme != null)
             {
-                existingData.ProfileTheme = dto.Theme;
+                existingData.ProfileTheme = Utils.Extensions
+                    .NormalizeThemeForSupporter(dto.Theme, effectiveSupporter);
             }
 
             if (dto.Visibility != null)
@@ -1470,7 +1484,8 @@ public partial class SpheneHub
                 ProfileTags = dto.Tags ?? null,
                 Base64BannerImage = dto.BannerImageBase64 ?? null,
                 Base64RowImage = dto.RowImageBase64 ?? null,
-                ProfileTheme = dto.Theme ?? null,
+                ProfileTheme = Utils.Extensions
+                    .NormalizeThemeForSupporter(dto.Theme, effectiveSupporter),
                 ProfileVisibility = (dto.Visibility ?? 0) & 0x1F,
                 IsNSFW = dto.IsNSFW ?? false
             };

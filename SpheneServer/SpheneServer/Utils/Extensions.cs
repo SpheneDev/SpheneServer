@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Sphene.API.Data;
 using Sphene.API.Data.Enum;
 using Sphene.API.Data.Extensions;
@@ -21,6 +23,37 @@ public static class Extensions
     public static bool IsSupporterEffective(bool isSupporter, DateTime? trialStartUtc)
         => isSupporter || (trialStartUtc.HasValue
             && DateTime.UtcNow - trialStartUtc.Value < SupporterTrialDuration);
+
+    /// <summary>Profile-theme keys gated behind supporter status - list-row
+    /// effects beyond the always-on baseline plus the card fx set. The
+    /// baseline bits (Glow+Pulse) are re-applied by the client's parse
+    /// anyway, so dropping the keys lands every row on the free look.</summary>
+    private static readonly string[] SupporterThemeKeys =
+    [
+        "rowHover", "rowHoverFx", "rowIdle", "rowIdleFx",
+        "cardHover", "cardHoverFx", "cardIdle", "cardIdleFx", "cardShimmer",
+    ];
+
+    /// <summary>Strips supporter-gated styling keys from a profile theme
+    /// when the owner isn't an effective supporter, so a modified client
+    /// cannot stash perk visuals server-side. Free appearance fields
+    /// (accent, banner, over-flags) ride through untouched; unparseable
+    /// input is returned as-is - the client-side parse falls back to
+    /// defaults anyway.</summary>
+    public static string? NormalizeThemeForSupporter(string? themeJson, bool effectiveSupporter)
+    {
+        if (effectiveSupporter || string.IsNullOrWhiteSpace(themeJson)) return themeJson;
+        try
+        {
+            if (JsonNode.Parse(themeJson) is not JsonObject theme) return themeJson;
+            foreach (var key in SupporterThemeKeys) theme.Remove(key);
+            return theme.Count == 0 ? string.Empty : theme.ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return themeJson;
+        }
+    }
 
     public static GroupData ToGroupData(this Group group)
     {
