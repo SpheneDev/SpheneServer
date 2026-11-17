@@ -53,6 +53,34 @@ public class ServerConfiguration : SpheneConfigurationBase
     [RemoteConfiguration]
     public int ChatE2EEMaxDevicesPerUser { get; set; } = 8;
 
+    /// <summary>Optional GIF-provider API key (KLIPY) published to permitted
+    /// clients in <c>ServerInfo</c> for private-chat GIF search. Empty disables
+    /// server-published GIF search.</summary>
+    [RemoteConfiguration]
+    public string GifApiKey { get; set; } = string.Empty;
+
+    /// <summary>Master switch for the private-chat GIF feature. When off,
+    /// no client receives GIF capability regardless of the beta flag or the
+    /// public-release flag - enable only in the authorized testing
+    /// environment until a production KLIPY key is approved.</summary>
+    [RemoteConfiguration]
+    public bool GifServiceEnabled { get; set; } = false;
+
+    /// <summary>Public-release switch for the private-chat GIF feature. When
+    /// off, only users with the per-user <c>users.gif_beta_enabled</c> flag
+    /// get GIF capability. Flip after an approved KLIPY production key is
+    /// configured - no client rebuild required.</summary>
+    [RemoteConfiguration]
+    public bool GifPublicEnabled { get; set; } = false;
+
+    /// <summary>Assumed request budget per hour for the configured GIF API
+    /// key, shown in the client diagnostics view as a local estimate.
+    /// KLIPY test keys cap at 100/hour; set to the provider-confirmed
+    /// budget when a production key is approved. Diagnostics only - the
+    /// provider remains authoritative.</summary>
+    [RemoteConfiguration]
+    public int GifTestKeyRequestLimitPerHour { get; set; } = 100;
+
     public bool RunPermissionCleanupOnStartup { get; set; } = true;
     public int HubExecutionConcurrencyFilter { get; set; } = 50;
 

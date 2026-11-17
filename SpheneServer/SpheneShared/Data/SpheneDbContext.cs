@@ -397,7 +397,7 @@ public class SpheneDbContext : DbContext
         mb.Entity<CommunityModerationLog>().HasIndex(l => l.GroupGID);
 
         mb.Entity<ChatMessageCipher>().ToTable("chat_message_ciphers");
-        mb.Entity<ChatMessageCipher>().HasKey(c => new { c.MessageId, c.ForDeviceId });
+        mb.Entity<ChatMessageCipher>().HasKey(c => new { c.MessageId, c.ForUID, c.ForDeviceId });
         mb.Entity<ChatMessageCipher>().HasOne(c => c.Message).WithMany(m => m.Ciphers)
             .HasForeignKey(c => c.MessageId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<ChatMessageCipher>().HasIndex(c => c.ForUID);

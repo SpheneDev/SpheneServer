@@ -63,6 +63,10 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
     private readonly string _supporterIconDirectory;
     private readonly bool _requireE2EEChat;
     private readonly int _chatE2EEMaxDevices;
+    private readonly string _gifApiKey;
+    private readonly bool _gifServiceEnabled;
+    private readonly bool _gifPublicEnabled;
+    private readonly int _gifTestKeyLimit;
 
     public SpheneHub(SpheneMetrics SpheneMetrics,
         IDbContextFactory<SpheneDbContext> spheneDbContextFactory, ILogger<SpheneHub> logger, SystemInfoService systemInfoService,
@@ -91,6 +95,10 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
         _supporterIconDirectory = configuration.GetValueOrDefault(nameof(ServerConfiguration.SupporterIconDirectory), "supporter-icons");
         _requireE2EEChat = configuration.GetValueOrDefault(nameof(ServerConfiguration.RequireE2EEChat), false);
         _chatE2EEMaxDevices = configuration.GetValueOrDefault(nameof(ServerConfiguration.ChatE2EEMaxDevicesPerUser), 8);
+        _gifApiKey = configuration.GetValueOrDefault(nameof(ServerConfiguration.GifApiKey), string.Empty) ?? string.Empty;
+        _gifServiceEnabled = configuration.GetValueOrDefault(nameof(ServerConfiguration.GifServiceEnabled), false);
+        _gifPublicEnabled = configuration.GetValueOrDefault(nameof(ServerConfiguration.GifPublicEnabled), false);
+        _gifTestKeyLimit = configuration.GetValueOrDefault(nameof(ServerConfiguration.GifTestKeyRequestLimitPerHour), 100);
         _contextAccessor = contextAccessor;
         _redis = redisDb;
         _onlineSyncedPairCacheService = onlineSyncedPairCacheService;
@@ -155,6 +163,13 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
 
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
 
+        // GIF capability: service enabled AND (public release OR per-user
+        // beta flag) AND a provider key configured. The key only ships
+        // when the flag is set, so unauthorized users can neither search
+        // nor obtain the credential.
+        var gifAllowed = SpheneShared.Utils.GifAccessPolicy.CanUse(
+            _gifServiceEnabled, _gifPublicEnabled, dbUser.GifBetaEnabled, _gifApiKey);
+
         return new ConnectionDto(new UserData(dbUser.UID, string.IsNullOrWhiteSpace(dbUser.Alias) ? null : dbUser.Alias, dbUser.IsSupporter, dbUser.DisplayName))
         {
             CurrentClientVersion = _expectedClientVersion,
@@ -178,6 +193,9 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
                 MaxCharaData = _maxCharaDataByUser,
                 MaxCharaDataVanity = _maxCharaDataByUserVanity,
                 SupporterFeaturesEnabled = _supporterFeaturesEnabled,
+                GifEnabled = gifAllowed,
+                GifApiKey = gifAllowed ? _gifApiKey : string.Empty,
+                GifTestKeyLimit = _gifTestKeyLimit,
             },
             DefaultPreferredPermissions = new DefaultPermissionsDto()
             {

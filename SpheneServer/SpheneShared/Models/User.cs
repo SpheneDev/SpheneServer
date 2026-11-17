@@ -16,6 +16,14 @@ public class User
 
     public bool IsSupporter { get; set; } = false;
 
+    /// <summary>Per-user opt-in for the private-chat GIF feature while it is
+    /// in closed testing. Effective access additionally requires the server
+    /// GIF service to be enabled (<c>ServerConfiguration.GifServiceEnabled</c>);
+    /// once <c>GifPublicEnabled</c> flips for public release this flag no
+    /// longer gates access. Read at connect time into
+    /// <c>ServerInfo.GifEnabled</c>.</summary>
+    public bool GifBetaEnabled { get; set; } = false;
+
     /// <summary>Server-stamped start of the one-time 24h supporter trial -
     /// non-null means the trial has been used (whether active or expired).</summary>
     public DateTime? SupporterTrialStartUtc { get; set; }

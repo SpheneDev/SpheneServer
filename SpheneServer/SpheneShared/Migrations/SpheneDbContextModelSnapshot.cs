@@ -754,6 +754,11 @@ namespace SpheneServer.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("message_id");
 
+                    b.Property<string>("ForUID")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("for_uid");
+
                     b.Property<string>("ForDeviceId")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
@@ -762,11 +767,6 @@ namespace SpheneServer.Migrations
                     b.Property<byte[]>("Blob")
                         .HasColumnType("bytea")
                         .HasColumnName("blob");
-
-                    b.Property<string>("ForUID")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("for_uid");
 
                     b.Property<string>("SealerDeviceId")
                         .HasMaxLength(64)
@@ -782,7 +782,7 @@ namespace SpheneServer.Migrations
                         .HasColumnType("character varying(10)")
                         .HasColumnName("sealer_uid");
 
-                    b.HasKey("MessageId", "ForDeviceId")
+                    b.HasKey("MessageId", "ForUID", "ForDeviceId")
                         .HasName("pk_chat_message_ciphers");
 
                     b.HasIndex("ForUID")
@@ -2490,6 +2490,10 @@ namespace SpheneServer.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("display_name");
+
+                    b.Property<bool>("GifBetaEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("gif_beta_enabled");
 
                     b.Property<bool>("IsAdmin")
                         .HasColumnType("boolean")
