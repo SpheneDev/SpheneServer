@@ -78,6 +78,8 @@ public static class CommunityCommentService
     {
         if (string.IsNullOrWhiteSpace(body) || body.Length > MaxBodyLength)
             return new(false, "invalid-body");
+        var plain = Utils.MarkdownText.StripPreservingLines(body);
+        if (plain.Length == 0) return new(false, "invalid-body");
 
         return await InParentTxnAsync(db, targetKind, targetId, async parent =>
         {
@@ -116,7 +118,7 @@ public static class CommunityCommentService
                 AuthorUid = authorUid,
                 ParentId = rootId,
                 RootId = rootId,
-                Body = body.Trim(),
+                Body = plain,
                 State = (int)CommentState.Visible,
                 CreatedAt = utcNow,
             };
@@ -140,13 +142,15 @@ public static class CommunityCommentService
     {
         if (string.IsNullOrWhiteSpace(body) || body.Length > MaxBodyLength)
             return new(false, "invalid-body");
+        var plain = Utils.MarkdownText.StripPreservingLines(body);
+        if (plain.Length == 0) return new(false, "invalid-body");
         var comment = await db.CommunityComments.FirstOrDefaultAsync(c => c.Id == commentId)
             .ConfigureAwait(false);
         if (comment == null) return new(false, "not-found");
         await RefreshAsync(db, comment).ConfigureAwait(false);
         if (comment.AuthorUid != uid) return new(false, "forbidden");
         if (comment.State != (int)CommentState.Visible) return new(false, "state");
-        comment.Body = body.Trim();
+        comment.Body = plain;
         comment.EditedAt = utcNow;
         await db.SaveChangesAsync().ConfigureAwait(false);
         return new(true, Comment: comment, Changed: true);

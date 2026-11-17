@@ -1,3 +1,4 @@
+#nullable enable
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -48,6 +49,21 @@ public static partial class MarkdownText
     /// <summary>Flattens markdown to a single-line plain-text excerpt.</summary>
     public static string Strip(string? markdown)
     {
+        return Whitespace().Replace(StripInline(markdown), " ").Trim();
+    }
+
+    /// <summary>Markdown → plain text preserving line breaks. Comments are
+    /// stored through this so the persisted body carries no markup at all -
+    /// modified clients cannot smuggle formatting past the write path.</summary>
+    public static string StripPreservingLines(string? markdown)
+    {
+        var text = StripInline(markdown);
+        return text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n').Trim();
+    }
+
+    private static string StripInline(string? markdown)
+    {
         if (string.IsNullOrWhiteSpace(markdown))
             return string.Empty;
         var text = markdown;
@@ -61,8 +77,8 @@ public static partial class MarkdownText
         text = Strikethrough().Replace(text, "$1");
         text = HeadingPrefix().Replace(text, string.Empty);
         text = ListPrefix().Replace(text, string.Empty);
-        text = BlockDivider().Replace(text, " ");
-        return Whitespace().Replace(text, " ").Trim();
+        text = BlockDivider().Replace(text, string.Empty);
+        return text;
     }
 
     [GeneratedRegex(@"\s+")]
