@@ -2743,6 +2743,16 @@ namespace SpheneServer.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("snippet");
 
+                    b.Property<string>("SubContentId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sub_content_id");
+
+                    b.Property<string>("TargetUid")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("target_uid");
+
                     b.Property<string>("Title")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")

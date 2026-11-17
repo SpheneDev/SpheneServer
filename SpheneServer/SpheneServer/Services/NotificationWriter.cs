@@ -8,6 +8,8 @@ using SpheneServer.Utils;
 using SpheneShared.Data;
 using SpheneShared.Models;
 
+#nullable enable
+
 namespace SpheneServer.Services;
 
 /// <summary>
@@ -44,7 +46,7 @@ public class NotificationWriter
     public async Task<UserNotification?> PushAsync(SpheneDbContext dbContext, string recipientUid,
         UserNotificationKind kind, string title, string? snippet = null, string? actorUid = null,
         string? groupGid = null, string? contentKind = null, string? contentId = null,
-        string? dedupeKey = null)
+        string? dedupeKey = null, string? subContentId = null, string? targetUid = null)
     {
         var recipient = await dbContext.Users
             .SingleOrDefaultAsync(u => u.UID == recipientUid).ConfigureAwait(false);
@@ -72,6 +74,8 @@ public class NotificationWriter
             GroupGID = groupGid,
             ContentKind = contentKind,
             ContentId = contentId,
+            SubContentId = subContentId,
+            TargetUid = targetUid,
             Title = title.Length > TitleMaxLength ? title[..TitleMaxLength] : title,
             Snippet = snippet?.Length > SnippetMaxLength ? snippet[..SnippetMaxLength] : snippet,
             DedupeKey = dedupeKey,
@@ -100,17 +104,19 @@ public class NotificationWriter
     public async Task PushManyAsync(IEnumerable<string> recipientUids, UserNotificationKind kind,
         string title, string? snippet = null, string? actorUid = null, string? groupGid = null,
         string? contentKind = null, string? contentId = null,
-        Func<string, string?>? dedupeKeyFor = null)
+        Func<string, string?>? dedupeKeyFor = null, string? subContentId = null,
+        string? targetUid = null)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync().ConfigureAwait(false);
         foreach (var uid in recipientUids.Distinct(StringComparer.Ordinal))
         {
             await PushAsync(dbContext, uid, kind, title, snippet, actorUid, groupGid,
-                contentKind, contentId, dedupeKeyFor?.Invoke(uid)).ConfigureAwait(false);
+                contentKind, contentId, dedupeKeyFor?.Invoke(uid), subContentId,
+                targetUid).ConfigureAwait(false);
         }
     }
 
     public static UserNotificationDto ToDto(UserNotification n, User? actor) => new(
         n.Id, n.Kind, actor?.ToUserData(), n.GroupGID, n.ContentKind, n.ContentId,
-        n.Title, n.Snippet, n.IsRead, n.CreatedAt);
+        n.Title, n.Snippet, n.IsRead, n.CreatedAt, n.SubContentId, n.TargetUid);
 }

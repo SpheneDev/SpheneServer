@@ -240,8 +240,10 @@ public partial class SpheneHub
                 UserNotificationKind.CommentModerated,
                 $"Your comment was {action.ToString().ToLowerInvariant()}ed",
                 dto.Reason, UserUID, access.GroupGid,
-                "comment", outcome.Comment.Id.ToString(),
-                $"mod:{action}:{outcome.Comment.Id}").ConfigureAwait(false);
+                dto.TargetKind.ToString().ToLowerInvariant(), dto.TargetId.ToString(),
+                $"mod:{action}:{outcome.Comment.Id}",
+                subContentId: outcome.Comment.Id.ToString(),
+                targetUid: access.TargetAuthorUid).ConfigureAwait(false);
         }
         if (outcome.Changed)
         {
@@ -300,7 +302,8 @@ public partial class SpheneHub
                 $"{dto.Kind} on your {dto.TargetKind.ToString().ToLowerInvariant()}",
                 null, UserUID, access.GroupGid,
                 dto.TargetKind.ToString().ToLowerInvariant(), hostId.ToString(),
-                $"reaction:{kind}:{hostId}:{UserUID}:{(int)dto.Kind}").ConfigureAwait(false);
+                $"reaction:{kind}:{hostId}:{UserUID}:{(int)dto.Kind}",
+                targetUid: access.TargetAuthorUid).ConfigureAwait(false);
         }
         if (outcome.Inserted || outcome.Removed)
         {
@@ -754,7 +757,8 @@ public partial class SpheneHub
             await _notificationWriter.PushAsync(DbContext, outcome.ParentAuthorUid,
                 UserNotificationKind.CommentReply, "New reply to your comment", snippet,
                 UserUID, comment.GroupGID, contentKind, contentId,
-                $"reply:{comment.Id}").ConfigureAwait(false);
+                $"reply:{comment.Id}", subContentId: comment.Id.ToString(),
+                targetUid: outcome.TargetAuthorUid).ConfigureAwait(false);
         }
         else if (outcome.TargetAuthorUid != null
             && !string.Equals(outcome.TargetAuthorUid, UserUID, StringComparison.Ordinal))
@@ -762,7 +766,8 @@ public partial class SpheneHub
             await _notificationWriter.PushAsync(DbContext, outcome.TargetAuthorUid,
                 UserNotificationKind.CommentAdded, "New comment", snippet,
                 UserUID, comment.GroupGID, contentKind, contentId,
-                $"comment:{comment.Id}").ConfigureAwait(false);
+                $"comment:{comment.Id}", subContentId: comment.Id.ToString(),
+                targetUid: outcome.TargetAuthorUid).ConfigureAwait(false);
         }
 
         foreach (var mentioned in EntityReferenceService.ParseMentions(comment.Body))
@@ -771,7 +776,9 @@ public partial class SpheneHub
             await _notificationWriter.PushAsync(DbContext, mentioned,
                 UserNotificationKind.Mention, "You were mentioned", snippet,
                 UserUID, comment.GroupGID, contentKind, contentId,
-                $"mention:{comment.Id}:{mentioned}").ConfigureAwait(false);
+                $"mention:{comment.Id}:{mentioned}",
+                subContentId: comment.Id.ToString(),
+                targetUid: outcome.TargetAuthorUid).ConfigureAwait(false);
         }
     }
 

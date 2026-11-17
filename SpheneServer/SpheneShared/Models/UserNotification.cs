@@ -35,6 +35,16 @@ public class UserNotification
     [MaxLength(64)]
     public string? ContentId { get; set; }
 
+    /// <summary>Inner target inside <see cref="ContentId"/> - e.g. the comment
+    /// id when <see cref="ContentId"/> holds the post it was left on.</summary>
+    [MaxLength(64)]
+    public string? SubContentId { get; set; }
+
+    /// <summary>Uid of the content owner hosting the discussion - for blog
+    /// targets the profile whose Chronicles tab carries the thread.</summary>
+    [MaxLength(10)]
+    public string? TargetUid { get; set; }
+
     [MaxLength(200)]
     public string Title { get; set; } = string.Empty;
 
