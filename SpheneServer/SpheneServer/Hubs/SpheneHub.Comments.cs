@@ -280,7 +280,8 @@ public partial class SpheneHub
     public async Task<ReactionSummaryDto> SetReaction(ReactionSetDto dto)
     {
         _logger.LogCallInfo(SpheneHubLogger.Args(dto));
-        var (kind, hostId, access) = await ResolveReactionTargetAsync(dto).ConfigureAwait(false);
+        var (kind, hostId, access, comment) = await ResolveReactionTargetAsync(dto)
+            .ConfigureAwait(false);
         if (access == null || !access.CanView)
         {
             return new(dto.TargetKind, dto.TargetId, [], [], 0);
@@ -290,19 +291,25 @@ public partial class SpheneHub
             UserUID, (int)dto.Kind, dto.Set, access.GroupGid, access.OwnerUid,
             DateTime.UtcNow).ConfigureAwait(false);
 
-        // Post-level reactions notify the author once per user/kind/target -
-        // the durable dedupe key means remove+re-add never re-notifies.
-        // Comment reactions never notify.
-        if (outcome.Inserted && dto.TargetKind != ReactionTargetKind.Comment
-            && access.TargetAuthorUid != null
-            && !string.Equals(access.TargetAuthorUid, UserUID, StringComparison.Ordinal))
+        // Reactions notify the author once per user/kind/target - the durable
+        // dedupe key means remove+re-add never re-notifies. Comment reactions
+        // go to the comment's author with the thread host as link container
+        // and the comment id as sub target - the deep-link lands inside the
+        // thread, not just on the post.
+        var notifyUid = comment?.AuthorUid ?? access.TargetAuthorUid;
+        if (outcome.Inserted && notifyUid != null
+            && !string.Equals(notifyUid, UserUID, StringComparison.Ordinal))
         {
-            await _notificationWriter.PushAsync(DbContext, access.TargetAuthorUid,
+            var linkKind = comment != null
+                ? ((CommentTargetKind)comment.TargetKind).ToString().ToLowerInvariant()
+                : dto.TargetKind.ToString().ToLowerInvariant();
+            await _notificationWriter.PushAsync(DbContext, notifyUid,
                 UserNotificationKind.Reaction,
                 $"{dto.Kind} on your {dto.TargetKind.ToString().ToLowerInvariant()}",
-                null, UserUID, access.GroupGid,
-                dto.TargetKind.ToString().ToLowerInvariant(), hostId.ToString(),
+                null, UserUID, comment?.GroupGID ?? access.GroupGid,
+                linkKind, comment?.TargetId.ToString() ?? hostId.ToString(),
                 $"reaction:{kind}:{hostId}:{UserUID}:{(int)dto.Kind}",
+                subContentId: comment?.Id.ToString(),
                 targetUid: access.TargetAuthorUid).ConfigureAwait(false);
         }
         if (outcome.Inserted || outcome.Removed)
@@ -326,7 +333,7 @@ public partial class SpheneHub
     [Authorize(Policy = "Identified")]
     public async Task<ReactionSummaryDto> GetReactionSummary(ReactionSetDto dto)
     {
-        var (kind, hostId, access) = await ResolveReactionTargetAsync(dto).ConfigureAwait(false);
+        var (kind, hostId, access, _) = await ResolveReactionTargetAsync(dto).ConfigureAwait(false);
         if (access == null || !access.CanView)
         {
             return new(dto.TargetKind, dto.TargetId, [], [], 0);
@@ -340,7 +347,7 @@ public partial class SpheneHub
     {
         var probe = new ReactionSetDto(dto.TargetKind, dto.TargetId,
             dto.Kind ?? ReactionKind.Like, true, dto.TargetId, dto.OwnerUid, dto.Group);
-        var (kind, hostId, access) = await ResolveReactionTargetAsync(probe).ConfigureAwait(false);
+        var (kind, hostId, access, _) = await ResolveReactionTargetAsync(probe).ConfigureAwait(false);
         if (access == null || !access.CanView) return new(dto.TargetKind, dto.TargetId, [], null);
 
         var pageSize = Math.Clamp(dto.PageSize, 1, CommentPageSizeMax);
@@ -363,20 +370,22 @@ public partial class SpheneHub
     }
 
     /// <summary>Resolves a reaction target: for Comment targets the reaction's
-    /// host is the COMMENT row and visibility comes from ITS thread target.</summary>
-    private async Task<(int StoredKind, long StoredId, CommentTargetAccess? Access)>
-        ResolveReactionTargetAsync(ReactionSetDto dto)
+    /// host is the COMMENT row and visibility comes from ITS thread target.
+    /// <see cref="CommunityComment"/> rides along so callers can address the
+    /// comment's author and thread host without a second fetch.</summary>
+    private async Task<(int StoredKind, long StoredId, CommentTargetAccess? Access,
+        CommunityComment? Comment)> ResolveReactionTargetAsync(ReactionSetDto dto)
     {
         if (dto.TargetKind == ReactionTargetKind.Comment)
         {
             var host = await DbContext.CommunityComments.AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == dto.TargetId).ConfigureAwait(false);
-            if (host == null) return (0, 0, null);
+            if (host == null) return (0, 0, null, null);
             var access = await ResolveCommentTargetAsync((CommentTargetKind)host.TargetKind,
                 host.TargetId, dto.OwnerUid, dto.Group?.GID).ConfigureAwait(false);
             // Comment reactions store kind=Comment + the comment id; the ACL
             // is the thread's - same visibility as reading the comment.
-            return ((int)ReactionTargetKind.Comment, dto.TargetId, access);
+            return ((int)ReactionTargetKind.Comment, dto.TargetId, access, host);
         }
         var commentKind = dto.TargetKind switch
         {
@@ -385,10 +394,10 @@ public partial class SpheneHub
             ReactionTargetKind.Blog => CommentTargetKind.Blog,
             _ => (CommentTargetKind)(-1),
         };
-        if (commentKind < 0) return (0, 0, null);
+        if (commentKind < 0) return (0, 0, null, null);
         var acc = await ResolveCommentTargetAsync(commentKind, dto.TargetId,
             dto.OwnerUid, dto.Group?.GID).ConfigureAwait(false);
-        return ((int)dto.TargetKind, dto.TargetId, acc);
+        return ((int)dto.TargetKind, dto.TargetId, acc, null);
     }
 
     private async Task<ReactionSummaryDto> BuildReactionSummaryAsync(int kind, long hostId)

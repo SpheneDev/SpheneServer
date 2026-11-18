@@ -422,7 +422,8 @@ public partial class SpheneHub
                 $"Comment on {title ?? "your post"}",
                 Snip(c.Body), c.CreatedAt,
                 Section: SectionOf(c.TargetKind),
-                ItemId: c.TargetId, ActorUid: c.AuthorUid));
+                ItemId: c.TargetId, ActorUid: c.AuthorUid,
+                SubItemId: c.Id));
         }
     }
 
@@ -464,7 +465,11 @@ public partial class SpheneHub
                 $"Reaction on {title ?? hostTitle ?? "your post"}",
                 ((ReactionKind)r.Kind).ToString(), r.CreatedAt,
                 Section: SectionOf(host.Kind),
-                ItemId: host.Id, ActorUid: r.UserUID));
+                ItemId: host.Id, ActorUid: r.UserUID,
+                // comment-target reactions keep the comment id as inner
+                // drill-in - the client lands inside the thread
+                SubItemId: r.TargetKind == (int)ReactionTargetKind.Comment
+                    ? r.TargetId : null));
         }
     }
 
