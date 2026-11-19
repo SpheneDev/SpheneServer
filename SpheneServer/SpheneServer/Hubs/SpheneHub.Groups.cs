@@ -2706,17 +2706,26 @@ public partial class SpheneHub
     private async Task<List<SyncshellCommunityFeedItemDto>> CollectFollowedFeedEventsAsync(
         List<string> followedGids,
         Dictionary<string, string> accents,
-        Dictionary<string, string> aliases)
+        Dictionary<string, string> aliases,
+        FeedCursor? cursor = null,
+        int? pagedTake = null)
     {
         var items = new List<SyncshellCommunityFeedItemDto>();
         if (followedGids.Count == 0) return items;
         var cutoff = DateTime.UtcNow - TimeSpan.FromDays(1);
-        var events = await DbContext.SyncshellCommunityEvents.AsNoTracking()
-            .Where(e => followedGids.Contains(e.GroupGID) && e.StartUtc >= cutoff
-                && e.PublishStatus == (int)ContentPublishStatus.Published
-                && e.Visibility == (int)EventVisibility.Public)
-            .OrderBy(e => e.StartUtc)
-            .Take(12)
+        var eventQuery = ApplyFeedKeyset(
+            DbContext.SyncshellCommunityEvents.AsNoTracking()
+                .Where(e => followedGids.Contains(e.GroupGID) && e.StartUtc >= cutoff
+                    && e.PublishStatus == (int)ContentPublishStatus.Published
+                    && e.Visibility == (int)EventVisibility.Public),
+            cursor, SyncshellFeedItemKind.Event, e => e.StartUtc, e => e.Id);
+        // v2 pages the same newest-first order the merged feed applies; v1
+        // keeps its soonest-first window - the caps mean different things.
+        var ordered = pagedTake.HasValue
+            ? eventQuery.OrderByDescending(e => e.StartUtc).ThenByDescending(e => e.Id)
+            : eventQuery.OrderBy(e => e.StartUtc);
+        var events = await ordered
+            .Take(pagedTake ?? 12)
             .Select(e => new { e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc,
                 e.EventStatus, e.PreviewMediaHash, e.ImageMediaHash })
             .ToListAsync().ConfigureAwait(false);
@@ -2737,21 +2746,29 @@ public partial class SpheneHub
     /// Collects the raw feed rows: published news, upcoming events and
     /// member-audience photos, capped per kind. Restricted audiences resolve
     /// per viewer in <c>GroupGetCommunity</c> and never enter the feed.
+    /// Feed v2 passes <paramref name="cursor"/> + <paramref name="pagedTake"/>:
+    /// the keyset then applies at candidate selection (the v1 cap would hide
+    /// every older row) and each kind pages in merged-feed order.
     /// </summary>
     private async Task<List<SyncshellCommunityFeedItemDto>> CollectCommunityFeedItems(
         List<string> gids,
         Dictionary<string, string> accents,
-        Dictionary<string, string> aliases)
+        Dictionary<string, string> aliases,
+        FeedCursor? cursor = null,
+        int? pagedTake = null)
     {
-        const int perKind = 12;
+        var perKind = pagedTake ?? 12;
         const int thumbnailSizeCap = 200_000;
         var items = new List<SyncshellCommunityFeedItemDto>(perKind * 3);
 
-        var news = await DbContext.SyncshellCommunityNews.AsNoTracking()
-            .Where(n => gids.Contains(n.GroupGID)
-                && (n.Status == (int)ContentPublishStatus.Published
-                    || (n.Status == (int)ContentPublishStatus.Scheduled && n.ScheduledForUtc <= DateTime.UtcNow)))
-            .OrderByDescending(n => n.PublishedAt)
+        var newsQuery = ApplyFeedKeyset(
+            DbContext.SyncshellCommunityNews.AsNoTracking()
+                .Where(n => gids.Contains(n.GroupGID)
+                    && (n.Status == (int)ContentPublishStatus.Published
+                        || (n.Status == (int)ContentPublishStatus.Scheduled && n.ScheduledForUtc <= DateTime.UtcNow))),
+            cursor, SyncshellFeedItemKind.News, n => n.PublishedAt, n => n.Id);
+        var news = await newsQuery
+            .OrderByDescending(n => n.PublishedAt).ThenByDescending(n => n.Id)
             .Take(perKind)
             .Select(n => new { n.GroupGID, n.Id, n.Title, n.Body, n.PublishedAt })
             .ToListAsync().ConfigureAwait(false);
@@ -2766,10 +2783,17 @@ public partial class SpheneHub
         }
 
         var cutoff = DateTime.UtcNow - TimeSpan.FromDays(1);
-        var events = await DbContext.SyncshellCommunityEvents.AsNoTracking()
-            .Where(e => gids.Contains(e.GroupGID) && e.StartUtc >= cutoff
-                && e.PublishStatus == (int)ContentPublishStatus.Published)
-            .OrderBy(e => e.StartUtc)
+        var eventQuery = ApplyFeedKeyset(
+            DbContext.SyncshellCommunityEvents.AsNoTracking()
+                .Where(e => gids.Contains(e.GroupGID) && e.StartUtc >= cutoff
+                    && e.PublishStatus == (int)ContentPublishStatus.Published),
+            cursor, SyncshellFeedItemKind.Event, e => e.StartUtc, e => e.Id);
+        // v2 pages the same newest-first order the merged feed applies; v1
+        // keeps its soonest-first window - the caps mean different things.
+        var orderedEvents = pagedTake.HasValue
+            ? eventQuery.OrderByDescending(e => e.StartUtc).ThenByDescending(e => e.Id)
+            : eventQuery.OrderBy(e => e.StartUtc);
+        var events = await orderedEvents
             .Take(perKind)
             .Select(e => new { e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc,
                 e.EventStatus, e.PreviewMediaHash, e.ImageMediaHash })
@@ -2787,9 +2811,12 @@ public partial class SpheneHub
                 ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash));
         }
 
-        var photos = await DbContext.SyncshellCommunityGallery.AsNoTracking()
-            .Where(g => gids.Contains(g.GroupGID) && g.Status == 0 && g.Audience == 0)
-            .OrderByDescending(g => g.CreatedAt)
+        var photoQuery = ApplyFeedKeyset(
+            DbContext.SyncshellCommunityGallery.AsNoTracking()
+                .Where(g => gids.Contains(g.GroupGID) && g.Status == 0 && g.Audience == 0),
+            cursor, SyncshellFeedItemKind.Photo, g => g.CreatedAt, g => g.Id);
+        var photos = await photoQuery
+            .OrderByDescending(g => g.CreatedAt).ThenByDescending(g => g.Id)
             .Take(perKind)
             .Select(g => new { g.GroupGID, g.Id, g.Caption, g.FileName, g.Size,
                 g.ImageBase64, g.ImageMediaHash, g.CreatedAt })
