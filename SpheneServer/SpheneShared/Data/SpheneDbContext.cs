@@ -99,6 +99,7 @@ public class SpheneDbContext : DbContext
     public DbSet<CommunityReport> CommunityReports { get; set; }
     public DbSet<CommunityModerationLog> CommunityModerationLogs { get; set; }
     public DbSet<SyncshellFavorite> SyncshellFavorites { get; set; }
+    public DbSet<UserFollow> UserFollows { get; set; }
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -412,5 +413,11 @@ public class SpheneDbContext : DbContext
         mb.Entity<ChatKeyBackup>().Property(k => k.Revision).IsConcurrencyToken();
         mb.Entity<ChatKeyBackup>().HasOne(k => k.User).WithMany()
             .HasForeignKey(k => k.UserUID).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<UserFollow>().HasKey(f => new { f.FollowerUID, f.TargetUID });
+        mb.Entity<UserFollow>().HasOne(f => f.Follower).WithMany()
+            .HasForeignKey(f => f.FollowerUID).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<UserFollow>().HasOne(f => f.Target).WithMany()
+            .HasForeignKey(f => f.TargetUID).OnDelete(DeleteBehavior.Cascade);
     }
 }

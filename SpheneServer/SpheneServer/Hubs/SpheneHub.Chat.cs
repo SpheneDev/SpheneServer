@@ -55,6 +55,20 @@ public partial class SpheneHub
             BlockedOn = DateTime.UtcNow,
         });
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        await PushBlockInvalidationAsync(blockedUid).ConfigureAwait(false);
+    }
+
+    /// <summary>Tells both sides the counterpart's profile view changed: the
+    /// caller drops its warm People/profile/following caches for the target,
+    /// the target drops the same for the caller. Reuses the profile-update
+    /// push - a block alters what each side may see of the other, and an
+    /// unblock alters it back the same way.</summary>
+    private async Task PushBlockInvalidationAsync(string otherUid)
+    {
+        await Clients.Caller.Client_UserUpdateProfile(new UserDto(
+            new UserData(otherUid))).ConfigureAwait(false);
+        await Clients.User(otherUid).Client_UserUpdateProfile(new UserDto(
+            new UserData(UserUID))).ConfigureAwait(false);
     }
 
     [Authorize(Policy = "Identified")]
@@ -70,6 +84,7 @@ public partial class SpheneHub
         }
         DbContext.UserBlocks.Remove(entry);
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
+        await PushBlockInvalidationAsync(dto.User.UID).ConfigureAwait(false);
     }
 
     [Authorize(Policy = "Identified")]

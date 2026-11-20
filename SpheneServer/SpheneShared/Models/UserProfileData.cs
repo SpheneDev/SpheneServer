@@ -34,6 +34,10 @@ public class UserProfileData
 
     public int ProfileVisibility { get; set; }
 
+    // Opt-in Community Hub visibility: signed-in users may find, open and
+    // follow this profile. Deliberately separate from the field mask.
+    public bool PublicProfileOptIn { get; set; }
+
     public string? LinksJson { get; set; }
 
     [Required]

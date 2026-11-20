@@ -196,6 +196,7 @@ public partial class SpheneHub : Hub<ISpheneHub>, ISpheneHub
                 GifEnabled = gifAllowed,
                 GifApiKey = gifAllowed ? _gifApiKey : string.Empty,
                 GifTestKeyLimit = _gifTestKeyLimit,
+                PublicProfilesEnabled = true,
             },
             DefaultPreferredPermissions = new DefaultPermissionsDto()
             {

@@ -2608,6 +2608,31 @@ namespace SpheneServer.Migrations
                     b.ToTable("user_default_preferred_permissions", (string)null);
                 });
 
+            modelBuilder.Entity("SpheneShared.Models.UserFollow", b =>
+                {
+                    b.Property<string>("FollowerUID")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("follower_uid");
+
+                    b.Property<string>("TargetUID")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("target_uid");
+
+                    b.Property<DateTime>("FollowedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("followed_at_utc");
+
+                    b.HasKey("FollowerUID", "TargetUID")
+                        .HasName("pk_user_follows");
+
+                    b.HasIndex("TargetUID")
+                        .HasDatabaseName("ix_user_follows_target_uid");
+
+                    b.ToTable("user_follows", (string)null);
+                });
+
             modelBuilder.Entity("SpheneShared.Models.UserHousingProperty", b =>
                 {
                     b.Property<long>("Id")
@@ -2990,6 +3015,10 @@ namespace SpheneServer.Migrations
                     b.Property<int>("ProfileVisibility")
                         .HasColumnType("integer")
                         .HasColumnName("profile_visibility");
+
+                    b.Property<bool>("PublicProfileOptIn")
+                        .HasColumnType("boolean")
+                        .HasColumnName("public_profile_opt_in");
 
                     b.Property<string>("RowImageMediaHash")
                         .HasMaxLength(40)
@@ -3781,6 +3810,27 @@ namespace SpheneServer.Migrations
                         .HasConstraintName("fk_user_default_preferred_permissions_users_user_uid");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SpheneShared.Models.UserFollow", b =>
+                {
+                    b.HasOne("SpheneShared.Models.User", "Follower")
+                        .WithMany()
+                        .HasForeignKey("FollowerUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_follows_users_follower_uid");
+
+                    b.HasOne("SpheneShared.Models.User", "Target")
+                        .WithMany()
+                        .HasForeignKey("TargetUID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_follows_users_target_uid");
+
+                    b.Navigation("Follower");
+
+                    b.Navigation("Target");
                 });
 
             modelBuilder.Entity("SpheneShared.Models.UserHousingProperty", b =>

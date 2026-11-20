@@ -471,7 +471,8 @@ public partial class SpheneHub
             data.ProfileVisibility,
             Utils.Extensions.IsSupporterEffective(data.User) ? data.Base64RowImage : null,
             show(ProfileVisibility.HideLinks)
-                ? DeserializeJson<List<UserProfileLinkDto>>(data.LinksJson) : null);
+                ? DeserializeJson<List<UserProfileLinkDto>>(data.LinksJson) : null,
+            PublicProfile: isSelf ? data.PublicProfileOptIn : null);
     }
 
     /// <summary>
@@ -1508,6 +1509,11 @@ public partial class SpheneHub
                 existingData.LinksJson = SerializeJson(dto.Links);
             }
 
+            if (dto.PublicProfile != null)
+            {
+                existingData.PublicProfileOptIn = dto.PublicProfile.Value;
+            }
+
             if (string.Equals("", dto.RowImageBase64, StringComparison.OrdinalIgnoreCase))
             {
                 existingData.Base64RowImage = null;
@@ -1531,7 +1537,8 @@ public partial class SpheneHub
                 ProfileTheme = Utils.Extensions
                     .NormalizeThemeForSupporter(dto.Theme, effectiveSupporter),
                 ProfileVisibility = (dto.Visibility ?? 0) & 0x1F,
-                IsNSFW = dto.IsNSFW ?? false
+                IsNSFW = dto.IsNSFW ?? false,
+                PublicProfileOptIn = dto.PublicProfile ?? false
             };
 
             await DbContext.UserProfileData.AddAsync(userProfileData).ConfigureAwait(false);
@@ -1540,7 +1547,14 @@ public partial class SpheneHub
         await DbContext.SaveChangesAsync().ConfigureAwait(false);
 
         var allPairedUsers = await GetAllPairedUnpausedUsers().ConfigureAwait(false);
-        var pairs = await GetOnlineUsers(allPairedUsers).ConfigureAwait(false);
+        // Public-profile followers get the same invalidation push - an open
+        // public view or a warm following feed drops its cache entry on
+        // visibility/sharing changes just like paired viewers do.
+        var followers = await DbContext.UserFollows.AsNoTracking()
+            .Where(f => f.TargetUID == UserUID).Select(f => f.FollowerUID)
+            .ToListAsync().ConfigureAwait(false);
+        var pairs = await GetOnlineUsers(
+            allPairedUsers.Union(followers).ToList()).ConfigureAwait(false);
 
         await Clients.Users(pairs.Select(p => p.Key)).Client_UserUpdateProfile(new(dto.User)).ConfigureAwait(false);
         await Clients.Caller.Client_UserUpdateProfile(new(dto.User)).ConfigureAwait(false);
