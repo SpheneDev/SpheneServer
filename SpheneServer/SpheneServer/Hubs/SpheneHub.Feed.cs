@@ -154,7 +154,7 @@ public partial class SpheneHub
             .OrderBy(e => e.StartUtc).ThenBy(e => e.Id)
             .Select(e => new
             {
-                e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc,
+                e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc, e.CreatedAt,
                 e.PreviewMediaHash, e.ImageMediaHash,
             })
             .FirstOrDefaultAsync().ConfigureAwait(false);
@@ -171,7 +171,8 @@ public partial class SpheneHub
             ev.GroupGID, alias, accent,
             SyncshellFeedItemKind.Event, ev.Id, ev.Title, ev.Location, ev.StartUtc,
             Section: SyncshellCommunitySection.Events, ItemId: ev.Id,
-            ThumbnailMediaHash: ev.PreviewMediaHash ?? ev.ImageMediaHash);
+            ThumbnailMediaHash: ev.PreviewMediaHash ?? ev.ImageMediaHash,
+            ActivityUtc: ev.CreatedAt);
     }
 
     /// <summary>
@@ -327,7 +328,8 @@ public partial class SpheneHub
                 e.GroupGID, aliases.GetValueOrDefault(e.GroupGID), null,
                 SyncshellFeedItemKind.Event, e.Id, e.Title, null, e.CreatedAt,
                 Section: SyncshellCommunitySection.Events, ItemId: e.Id, ActorUid: targetUid,
-                ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash));
+                ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash,
+                ActivityUtc: e.CreatedAt));
         }
     }
 

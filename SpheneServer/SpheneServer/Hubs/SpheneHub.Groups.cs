@@ -2726,7 +2726,7 @@ public partial class SpheneHub
             : eventQuery.OrderBy(e => e.StartUtc);
         var events = await ordered
             .Take(pagedTake ?? 12)
-            .Select(e => new { e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc,
+            .Select(e => new { e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc, e.CreatedAt,
                 e.EventStatus, e.PreviewMediaHash, e.ImageMediaHash })
             .ToListAsync().ConfigureAwait(false);
         foreach (var e in events)
@@ -2737,7 +2737,8 @@ public partial class SpheneHub
                 e.GroupGID, aliases.GetValueOrDefault(e.GroupGID),
                 accents.GetValueOrDefault(e.GroupGID),
                 SyncshellFeedItemKind.Event, e.Id, title, e.Location, e.StartUtc,
-                ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash));
+                ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash,
+                ActivityUtc: e.CreatedAt));
         }
         return items;
     }
@@ -2795,7 +2796,7 @@ public partial class SpheneHub
             : eventQuery.OrderBy(e => e.StartUtc);
         var events = await orderedEvents
             .Take(perKind)
-            .Select(e => new { e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc,
+            .Select(e => new { e.GroupGID, e.Id, e.Title, e.Location, e.StartUtc, e.CreatedAt,
                 e.EventStatus, e.PreviewMediaHash, e.ImageMediaHash })
             .ToListAsync().ConfigureAwait(false);
         foreach (var e in events)
@@ -2808,7 +2809,8 @@ public partial class SpheneHub
                 e.GroupGID, aliases.GetValueOrDefault(e.GroupGID),
                 accents.GetValueOrDefault(e.GroupGID),
                 SyncshellFeedItemKind.Event, e.Id, title, e.Location, e.StartUtc,
-                ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash));
+                ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash,
+                ActivityUtc: e.CreatedAt));
         }
 
         var photoQuery = ApplyFeedKeyset(
