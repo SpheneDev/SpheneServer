@@ -800,7 +800,7 @@ public partial class SpheneHub
         var now = DateTime.UtcNow;
         var contentKind = ((CommentTargetKind)comment.TargetKind).ToString().ToLowerInvariant();
         var snippet = Utils.MarkdownText.Strip(comment.Body);
-        snippet = snippet.Length > 120 ? snippet[..120].TrimEnd() + "…" : snippet;
+        snippet = snippet.Length > 120 ? snippet[..120].TrimEnd() + "..." : snippet;
         var contentId = comment.TargetId.ToString();
 
         if (outcome.ParentAuthorUid != null

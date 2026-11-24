@@ -1015,7 +1015,7 @@ public partial class SpheneHub
         // tooltips/cards would show raw markup.
         var plain = Utils.MarkdownText.Strip(body);
         if (plain.Length == 0) return null;
-        return plain.Length <= 140 ? plain : plain[..140].TrimEnd() + "…";
+        return plain.Length <= 140 ? plain : plain[..140].TrimEnd() + "...";
     }
 
     /// <summary>Opaque cursor: base64url of

@@ -2776,7 +2776,7 @@ public partial class SpheneHub
         foreach (var n in news)
         {
             var snippet = string.IsNullOrWhiteSpace(n.Body) ? null
-                : n.Body.Length <= 140 ? n.Body : n.Body[..140].TrimEnd() + "…";
+                : n.Body.Length <= 140 ? n.Body : n.Body[..140].TrimEnd() + "...";
             items.Add(new SyncshellCommunityFeedItemDto(
                 n.GroupGID, aliases.GetValueOrDefault(n.GroupGID),
                 accents.GetValueOrDefault(n.GroupGID),
