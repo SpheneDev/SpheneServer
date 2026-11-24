@@ -3504,7 +3504,7 @@ public partial class SpheneHub
                 SyncshellCommunitySection.Staff, null)).ConfigureAwait(false);
     }
 
-    private async Task PushCommunityChangedAsync(string gid, SyncshellCommunitySection? section = null, long? contentId = null)
+    private async Task PushCommunityChangedAsync(string gid, SyncshellCommunitySection? section = null, long? contentId = null, bool reactionsOnly = false, int? reactionTargetKind = null, long? reactionTargetId = null)
     {
         var memberUids = await DbContext.GroupPairs.AsNoTracking()
             .Where(p => p.GroupGID == gid).Select(p => p.GroupUserUID).ToListAsync().ConfigureAwait(false);
@@ -3516,7 +3516,7 @@ public partial class SpheneHub
         var audience = memberUids.Union(staffUids, StringComparer.Ordinal).ToList();
         if (audience.Count == 0) return;
         await Clients.Users(audience)
-            .Client_CommunityChanged(new CommunityChangedDto(new GroupData(gid), section, contentId)).ConfigureAwait(false);
+            .Client_CommunityChanged(new CommunityChangedDto(new GroupData(gid), section, contentId, reactionsOnly, reactionTargetKind, reactionTargetId)).ConfigureAwait(false);
     }
 
     private async Task<bool> DeleteCommunityItem<TEntity>(SyncshellCommunityItemDeleteDto dto,

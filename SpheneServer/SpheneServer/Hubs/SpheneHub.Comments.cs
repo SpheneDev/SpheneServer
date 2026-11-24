@@ -292,8 +292,21 @@ public partial class SpheneHub
         {
             return new(dto.TargetKind, dto.TargetId, [], [], 0);
         }
+        // Toggle mode decides the direction from the stored row, not the
+        // client's guess - feed rows cache viewer state that can lag behind
+        // writes made in other surfaces, and a stale guess flipped the write
+        // into a no-op or a re-add of something the user meant to remove
+        var set = dto.Set;
+        if (dto.Toggle)
+        {
+            var exists = await DbContext.CommunityReactions.AsNoTracking()
+                .AnyAsync(r => r.TargetKind == kind && r.TargetId == hostId
+                    && r.UserUID == UserUID && r.EmojiSeq == emoji)
+                .ConfigureAwait(false);
+            set = !exists;
+        }
         var outcome = await CommunityReactionService.ApplyAsync(DbContext, kind, hostId,
-            UserUID, emoji, dto.Set, access.GroupGid, access.OwnerUid,
+            UserUID, emoji, set, access.GroupGid, access.OwnerUid,
             DateTime.UtcNow).ConfigureAwait(false);
 
         // Reactions notify the author once per user/kind/target - the durable
@@ -324,7 +337,12 @@ public partial class SpheneHub
                 // No section: comment-level reactions would carry the comment
                 // id, not the host id - clients invalidate their open thread
                 // caches for the whole shell page on a section-less push.
-                await PushCommunityChangedAsync(access.GroupGid).ConfigureAwait(false);
+                // Marked reactions-only: feeds patch their own toggles
+                // locally, so nobody needs a wholesale reload for a count.
+                await PushCommunityChangedAsync(access.GroupGid,
+                    reactionsOnly: true,
+                    reactionTargetKind: comment == null ? kind : null,
+                    reactionTargetId: comment == null ? hostId : null).ConfigureAwait(false);
             }
             else if (access.OwnerUid != null)
             {

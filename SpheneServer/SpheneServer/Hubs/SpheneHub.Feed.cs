@@ -862,30 +862,44 @@ public partial class SpheneHub
         if (targetKinds.Count == 0) return page;
 
         var reactions = new Dictionary<(int, long), int>();
+        var likeCounts = new Dictionary<(int, long), int>();
+        var emojiCounts = new Dictionary<(int, long), List<FeedReactionEmojiDto>>();
         var comments = new Dictionary<(int, long), int>();
         var likedByMe = new HashSet<(int, long)>();
+        var thumbsUp = ReactionEmojiMap.ThumbsUp;
         foreach (var tk in targetKinds)
         {
             var ids = page.Where(i => TargetOf(i.Kind) == tk)
                 .Select(i => i.ItemId ?? i.Id).ToList();
-            foreach (var g in await DbContext.CommunityReactions.AsNoTracking()
+            // Aggregated in memory: thumbs variants (prefix match - the skin
+            // tone modifier follows the base glyph) count as likes and are
+            // excluded from the per-emoji chips; everything else groups by
+            // its exact sequence, most-reacted first.
+            var rows = await DbContext.CommunityReactions.AsNoTracking()
                 .Where(r => r.TargetKind == tk && ids.Contains(r.TargetId))
-                .GroupBy(r => r.TargetId)
-                .Select(g => new { g.Key, Count = g.Count() })
-                .ToListAsync().ConfigureAwait(false))
+                .Select(r => new { r.TargetId, r.EmojiSeq, r.Kind, r.UserUID })
+                .ToListAsync().ConfigureAwait(false);
+            foreach (var g in rows.GroupBy(r => r.TargetId))
             {
-                reactions[(tk, g.Key)] = g.Count;
+                reactions[(tk, g.Key)] = g.Count();
+                var likes = g.Count(r => r.Kind == (int)ReactionKind.Like
+                    || r.EmojiSeq.StartsWith(thumbsUp, StringComparison.Ordinal));
+                if (likes > 0) likeCounts[(tk, g.Key)] = likes;
+                var chips = g.Where(r => r.Kind != (int)ReactionKind.Like
+                        && !r.EmojiSeq.StartsWith(thumbsUp, StringComparison.Ordinal))
+                    .GroupBy(r => r.EmojiSeq)
+                    .Select(e => new FeedReactionEmojiDto(e.Key, e.Count(),
+                        e.Any(r => r.UserUID == UserUID)))
+                    .OrderByDescending(e => e.Count)
+                    .ToList();
+                if (chips.Count > 0) emojiCounts[(tk, g.Key)] = chips;
             }
             // The caller's own thumbs-up rows drive the active state +
-            // toggle direction in the client's engagement strip. Toned
-            // thumbs carry the base glyph as their leading codepoints, so a
-            // prefix match counts them as likes too.
-            var thumbsUp = ReactionEmojiMap.ThumbsUp;
-            foreach (var id in await DbContext.CommunityReactions.AsNoTracking()
-                .Where(r => r.TargetKind == tk && ids.Contains(r.TargetId)
-                    && r.UserUID == UserUID
-                    && (r.Kind == (int)ReactionKind.Like || r.EmojiSeq.StartsWith(thumbsUp)))
-                .Select(r => r.TargetId).ToListAsync().ConfigureAwait(false))
+            // toggle direction in the client's engagement strip.
+            foreach (var id in rows.Where(r => r.UserUID == UserUID
+                && (r.Kind == (int)ReactionKind.Like
+                    || r.EmojiSeq.StartsWith(thumbsUp, StringComparison.Ordinal)))
+                .Select(r => r.TargetId).Distinct())
             {
                 likedByMe.Add((tk, id));
             }
@@ -913,6 +927,8 @@ public partial class SpheneHub
                     ? cc : i.CommentCount,
                 ReactionCount = reactions.TryGetValue((tk, id), out var rc)
                     ? rc : i.ReactionCount,
+                LikeCount = likeCounts.TryGetValue((tk, id), out var lc) ? lc : 0,
+                ReactionEmojis = emojiCounts.TryGetValue((tk, id), out var ec) ? ec : null,
                 LikedByMe = likedByMe.Contains((tk, id)),
             };
         }).ToList();
