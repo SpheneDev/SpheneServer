@@ -287,8 +287,13 @@ public partial class SpheneHub
             return new(dto.TargetKind, dto.TargetId, [], [], 0);
         }
 
+        var emoji = ResolveReactionEmoji(dto);
+        if (emoji.Length == 0)
+        {
+            return new(dto.TargetKind, dto.TargetId, [], [], 0);
+        }
         var outcome = await CommunityReactionService.ApplyAsync(DbContext, kind, hostId,
-            UserUID, (int)dto.Kind, dto.Set, access.GroupGid, access.OwnerUid,
+            UserUID, emoji, dto.Set, access.GroupGid, access.OwnerUid,
             DateTime.UtcNow).ConfigureAwait(false);
 
         // Reactions notify the author once per user/kind/target - the durable
@@ -305,10 +310,10 @@ public partial class SpheneHub
                 : dto.TargetKind.ToString().ToLowerInvariant();
             await _notificationWriter.PushAsync(DbContext, notifyUid,
                 UserNotificationKind.Reaction,
-                $"{dto.Kind} on your {dto.TargetKind.ToString().ToLowerInvariant()}",
+                $"{emoji} on your {dto.TargetKind.ToString().ToLowerInvariant()}",
                 null, UserUID, comment?.GroupGID ?? access.GroupGid,
                 linkKind, comment?.TargetId.ToString() ?? hostId.ToString(),
-                $"reaction:{kind}:{hostId}:{UserUID}:{(int)dto.Kind}",
+                $"reaction:{kind}:{hostId}:{UserUID}:{emoji}",
                 subContentId: comment?.Id.ToString(),
                 targetUid: access.TargetAuthorUid).ConfigureAwait(false);
         }
@@ -353,7 +358,15 @@ public partial class SpheneHub
         var pageSize = Math.Clamp(dto.PageSize, 1, CommentPageSizeMax);
         var query = DbContext.CommunityReactions.AsNoTracking()
             .Where(r => r.TargetKind == kind && r.TargetId == hostId);
-        if (dto.Kind != null) query = query.Where(r => r.Kind == (int)dto.Kind.Value);
+        if (!string.IsNullOrWhiteSpace(dto.Emoji))
+        {
+            query = query.Where(r => r.EmojiSeq == dto.Emoji);
+        }
+        else if (dto.Kind != null)
+        {
+            var legacyEmoji = ReactionEmojiMap.ForKind(dto.Kind.Value);
+            query = query.Where(r => r.EmojiSeq == legacyEmoji);
+        }
         if (dto.Cursor != null) query = query.Where(r => r.CreatedAt < dto.Cursor.Value);
 
         var rows = await query.OrderByDescending(r => r.CreatedAt).Take(pageSize + 1)
@@ -402,9 +415,21 @@ public partial class SpheneHub
 
     private async Task<ReactionSummaryDto> BuildReactionSummaryAsync(int kind, long hostId)
     {
-        var (counts, viewer, total) = await CommunityReactionService
+        var (emojiCounts, viewerEmojis, counts, viewerKinds, total) = await CommunityReactionService
             .SummaryAsync(DbContext, kind, hostId, UserUID).ConfigureAwait(false);
-        return new((ReactionTargetKind)kind, hostId, counts, viewer, total);
+        return new((ReactionTargetKind)kind, hostId, counts, viewerKinds, total,
+            emojiCounts, viewerEmojis);
+    }
+
+    /// <summary>Emoji writes win; legacy kind writes translate through the
+    /// canonical map, so both client generations land on the same row.
+    /// Bounded length keeps the identity column honest.</summary>
+    private static string ResolveReactionEmoji(ReactionSetDto dto)
+    {
+        var emoji = string.IsNullOrWhiteSpace(dto.Emoji)
+            ? ReactionEmojiMap.ForKind(dto.Kind)
+            : dto.Emoji.Trim();
+        return emoji.Length is > 0 and <= 24 ? emoji : string.Empty;
     }
 
     // ------------------------------------------------------------------

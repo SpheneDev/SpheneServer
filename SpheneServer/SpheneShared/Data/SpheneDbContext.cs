@@ -369,10 +369,10 @@ public class SpheneDbContext : DbContext
         mb.Entity<CommunityComment>().HasIndex(c => c.GroupGID);
 
         mb.Entity<CommunityReaction>().ToTable("community_reactions");
-        mb.Entity<CommunityReaction>().HasKey(r => new { r.TargetKind, r.TargetId, r.UserUID, r.Kind });
+        mb.Entity<CommunityReaction>().HasKey(r => new { r.TargetKind, r.TargetId, r.UserUID, r.EmojiSeq });
         mb.Entity<CommunityReaction>().HasOne(r => r.User).WithMany()
             .HasForeignKey(r => r.UserUID).OnDelete(DeleteBehavior.Cascade);
-        mb.Entity<CommunityReaction>().HasIndex(r => new { r.TargetKind, r.TargetId, r.Kind });
+        mb.Entity<CommunityReaction>().HasIndex(r => new { r.TargetKind, r.TargetId, r.EmojiSeq });
         mb.Entity<CommunityReaction>().HasIndex(r => r.GroupGID);
         mb.Entity<CommunityReaction>().HasIndex(r => r.UserUID);
 

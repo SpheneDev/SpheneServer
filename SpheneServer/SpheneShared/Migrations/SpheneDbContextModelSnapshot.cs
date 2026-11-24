@@ -1057,9 +1057,10 @@ namespace SpheneServer.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("user_uid");
 
-                    b.Property<int>("Kind")
-                        .HasColumnType("integer")
-                        .HasColumnName("kind");
+                    b.Property<string>("EmojiSeq")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("emoji_seq");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1070,12 +1071,16 @@ namespace SpheneServer.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("group_gid");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
                     b.Property<string>("OwnerUid")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("owner_uid");
 
-                    b.HasKey("TargetKind", "TargetId", "UserUID", "Kind")
+                    b.HasKey("TargetKind", "TargetId", "UserUID", "EmojiSeq")
                         .HasName("pk_community_reactions");
 
                     b.HasIndex("GroupGID")
@@ -1084,8 +1089,8 @@ namespace SpheneServer.Migrations
                     b.HasIndex("UserUID")
                         .HasDatabaseName("ix_community_reactions_user_uid");
 
-                    b.HasIndex("TargetKind", "TargetId", "Kind")
-                        .HasDatabaseName("ix_community_reactions_target_kind_target_id_kind");
+                    b.HasIndex("TargetKind", "TargetId", "EmojiSeq")
+                        .HasDatabaseName("ix_community_reactions_target_kind_target_id_emoji_seq");
 
                     b.ToTable("community_reactions", (string)null);
                 });

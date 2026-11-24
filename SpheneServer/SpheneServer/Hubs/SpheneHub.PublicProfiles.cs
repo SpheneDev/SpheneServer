@@ -249,6 +249,7 @@ public partial class SpheneHub
             .Select(b => new
             {
                 b.Id, b.Title, b.Body, b.CreatedAt, b.CoverMediaHash, b.UserUID,
+                b.CommentCount, b.ViewCount,
             })
             .ToListAsync().ConfigureAwait(false);
 
@@ -266,16 +267,158 @@ public partial class SpheneHub
             SyncshellFeedItemKind.Blog, b.Id, b.Title, Snip(b.Body), b.CreatedAt,
             Section: null, ItemId: b.Id, ActorUid: b.UserUID,
             ThumbnailMediaHash: b.CoverMediaHash, TargetOwnerUid: b.UserUID,
-            OwnerIsNsfw: nsfwAuthors.Contains(b.UserUID)))
+            OwnerIsNsfw: nsfwAuthors.Contains(b.UserUID),
+            CommentCount: b.CommentCount, ViewCount: b.ViewCount))
             .ToList();
 
         var names = await ResolveFeedActorNamesAsync(page).ConfigureAwait(false);
         page = page.Select(i => i.ActorUid != null
                 && names.TryGetValue(i.ActorUid, out var n)
             ? i with { ActorDisplayName = n } : i).ToList();
+        page = await FillFeedEngagementAsync(page).ConfigureAwait(false);
         var next = rows.Count > take && page.Count > 0
             ? EncodeFeedCursor(page[^1]) : null;
         return new SyncshellCommunityFeedPageDto(page, next);
+    }
+
+    /// <summary>
+    /// "For You" - a ranked top-N digest across the caller's community
+    /// content (member + followed shells) and followed authors' public
+    /// Chronicles. Not paged: scoring needs the whole candidate window, so
+    /// the response is a single ranked slice and <c>NextCursor</c> stays
+    /// null. Score = (1 + engagement) x exp(-ageHours/48) - quiet posts
+    /// still rank on recency alone, engagement is honest counters only,
+    /// followed authors get a 1.5x boost. Activity rows (comments,
+    /// reactions, sign-ups) never enter - they belong to the Activity
+    /// surface, not a recommendations feed.
+    /// </summary>
+    [Authorize(Policy = "Identified")]
+    public async Task<SyncshellCommunityFeedPageDto> UserGetForYouFeed(
+        FeedPageRequestDto dto)
+    {
+        _logger.LogCallInfo(SpheneHubLogger.Args(dto.Take));
+        var take = Math.Clamp(dto.Take, 1, FeedPageSizeMax);
+        var now = DateTime.UtcNow;
+
+        var items = await CollectForYouCommunityAsync().ConfigureAwait(false);
+        var authors = await FollowingAuthorUidsAsync().ConfigureAwait(false);
+        var authorSet = authors.ToHashSet(StringComparer.Ordinal);
+        await CollectForYouFollowingBlogsAsync(authors, now, items)
+            .ConfigureAwait(false);
+
+        // A followed author's post can surface through both the related blog
+        // collector and the followed-author slice - dedupe on content key.
+        items = items.GroupBy(i => (i.Kind, i.ItemId ?? i.Id))
+            .Select(g => g.First()).ToList();
+
+        var names = await ResolveFeedActorNamesAsync(items).ConfigureAwait(false);
+        items = items.Select(i => i.ActorUid != null
+                && names.TryGetValue(i.ActorUid, out var n)
+            ? i with { ActorDisplayName = n } : i).ToList();
+        items = await FillFeedEngagementAsync(items).ConfigureAwait(false);
+
+        var page = items.OrderByDescending(i => ForYouScore(i, now, authorSet))
+            .ThenByDescending(i => i.TimestampUtc)
+            .ThenBy(i => (int)i.Kind)
+            .ThenByDescending(i => i.ItemId ?? i.Id)
+            .Take(take).ToList();
+        return new SyncshellCommunityFeedPageDto(page, null);
+    }
+
+    /// <summary>Community content candidates for For You - member + followed
+    /// shells' news/events/photos and related authors' blogs, newest-bounded
+    /// per source (the ranking window, not a page).</summary>
+    private async Task<List<SyncshellCommunityFeedItemDto>> CollectForYouCommunityAsync()
+    {
+        const int perSource = 20;
+        var gids = await DbContext.GroupPairs.AsNoTracking()
+            .Where(gp => gp.GroupUserUID == UserUID)
+            .Select(gp => gp.GroupGID).ToListAsync().ConfigureAwait(false);
+        var followed = await FollowedNonMemberGidsAsync(gids).ConfigureAwait(false);
+        var allGids = gids.Union(followed, StringComparer.Ordinal).ToList();
+
+        var items = new List<SyncshellCommunityFeedItemDto>(perSource * 4);
+        if (allGids.Count > 0)
+        {
+            var accents = await DbContext.SyncshellWelcomePages.AsNoTracking()
+                .Where(w => allGids.Contains(w.GroupGID))
+                .Select(w => new { w.GroupGID, w.AccentColor })
+                .ToDictionaryAsync(w => w.GroupGID, w => w.AccentColor)
+                .ConfigureAwait(false);
+            var aliases = await DbContext.Groups.AsNoTracking()
+                .Where(g => allGids.Contains(g.GID))
+                .Select(g => new { g.GID, g.Alias })
+                .ToDictionaryAsync(g => g.GID, g => g.Alias)
+                .ConfigureAwait(false);
+
+            var baseItems = (await CollectCommunityFeedItems(gids, accents,
+                    aliases, null, perSource).ConfigureAwait(false))
+                .Concat(await CollectFollowedFeedEventsAsync(followed, accents,
+                    aliases, null, perSource).ConfigureAwait(false));
+            foreach (var it in baseItems)
+            {
+                var section = it.Kind switch
+                {
+                    SyncshellFeedItemKind.News => SyncshellCommunitySection.News,
+                    SyncshellFeedItemKind.Event => SyncshellCommunitySection.Events,
+                    SyncshellFeedItemKind.Photo => SyncshellCommunitySection.Gallery,
+                    _ => (SyncshellCommunitySection?)null,
+                };
+                items.Add(it with { Section = section, ItemId = it.Id });
+            }
+        }
+        await CollectFeedBlogsAsync(gids, null, perSource, items).ConfigureAwait(false);
+        return items;
+    }
+
+    /// <summary>Followed authors' public Chronicles - the same visibility
+    /// gate the Following feed applies, bounded to the newest candidates.</summary>
+    private async Task CollectForYouFollowingBlogsAsync(List<string> authors,
+        DateTime now, List<SyncshellCommunityFeedItemDto> sink)
+    {
+        if (authors.Count == 0) return;
+        const int perSource = 20;
+        var rows = await DbContext.UserProfileBlogPosts.AsNoTracking()
+            .Where(b => authors.Contains(b.UserUID)
+                && b.VisibilityScope == (int)BlogVisibilityScope.Public
+                && (b.Status == (int)ContentPublishStatus.Published
+                    || (b.Status == (int)ContentPublishStatus.Scheduled
+                        && b.ScheduledForUtc <= now)))
+            .OrderByDescending(b => b.CreatedAt).ThenByDescending(b => b.Id)
+            .Take(perSource)
+            .Select(b => new { b.Id, b.UserUID, b.Title, b.Body, b.CreatedAt,
+                b.CoverMediaHash, b.CommentCount, b.ViewCount })
+            .ToListAsync().ConfigureAwait(false);
+        var nsfwAuthors = (await DbContext.UserProfileData.AsNoTracking()
+            .Where(p => authors.Contains(p.UserUID) && p.IsNSFW)
+            .Select(p => p.UserUID).ToListAsync().ConfigureAwait(false))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var b in rows)
+        {
+            sink.Add(new SyncshellCommunityFeedItemDto(
+                string.Empty, null, null,
+                SyncshellFeedItemKind.Blog, b.Id, b.Title, Snip(b.Body),
+                b.CreatedAt, Section: null, ItemId: b.Id, ActorUid: b.UserUID,
+                ThumbnailMediaHash: b.CoverMediaHash, TargetOwnerUid: b.UserUID,
+                OwnerIsNsfw: nsfwAuthors.Contains(b.UserUID),
+                CommentCount: b.CommentCount, ViewCount: b.ViewCount));
+        }
+    }
+
+    /// <summary>Rank = (1 + engagement) x exp(-ageHours/48) x follow boost.
+    /// ActivityUtc (publication) is the honest freshness anchor - events
+    /// carry their future StartUtc as TimestampUtc, which would let a
+    /// far-out date fake recency.</summary>
+    private static double ForYouScore(SyncshellCommunityFeedItemDto i,
+        DateTime now, HashSet<string> followedAuthors)
+    {
+        var anchor = i.ActivityUtc ?? i.TimestampUtc;
+        var ageHours = Math.Max(0d, (now - anchor).TotalHours);
+        var engagement = 1d + 3d * (i.CommentCount ?? 0)
+            + 2d * (i.ReactionCount ?? 0) + 0.1d * (i.ViewCount ?? 0);
+        var boost = i.ActorUid != null && followedAuthors.Contains(i.ActorUid)
+            ? 1.5d : 1d;
+        return engagement * Math.Exp(-ageHours / 48d) * boost;
     }
 
     /// <summary>Followed targets currently allowed to contribute to the

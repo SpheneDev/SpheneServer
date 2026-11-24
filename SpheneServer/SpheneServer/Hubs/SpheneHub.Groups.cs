@@ -2738,7 +2738,7 @@ public partial class SpheneHub
                 accents.GetValueOrDefault(e.GroupGID),
                 SyncshellFeedItemKind.Event, e.Id, title, e.Location, e.StartUtc,
                 ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash,
-                ActivityUtc: e.CreatedAt));
+                ActivityUtc: e.CreatedAt, FullMediaHash: e.ImageMediaHash));
         }
         return items;
     }
@@ -2810,7 +2810,7 @@ public partial class SpheneHub
                 accents.GetValueOrDefault(e.GroupGID),
                 SyncshellFeedItemKind.Event, e.Id, title, e.Location, e.StartUtc,
                 ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash,
-                ActivityUtc: e.CreatedAt));
+                ActivityUtc: e.CreatedAt, FullMediaHash: e.ImageMediaHash));
         }
 
         var photoQuery = ApplyFeedKeyset(

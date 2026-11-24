@@ -3,9 +3,11 @@ using System.ComponentModel.DataAnnotations;
 namespace SpheneShared.Models;
 
 /// <summary>One user's reaction on a target. Composite PK
-/// (target_kind, target_id, user_uid, kind) is the uniqueness authority -
+/// (target_kind, target_id, user_uid, emoji_seq) is the uniqueness authority -
 /// SetReaction = INSERT ON CONFLICT DO NOTHING, RemoveReaction = DELETE;
-/// both idempotent under concurrent requests.</summary>
+/// both idempotent under concurrent requests. The reaction identity is the
+/// emoji glyph; legacy int-kind rows were backfilled to their canonical
+/// glyphs by the ReactionEmojiSeq migration.</summary>
 public class CommunityReaction
 {
     /// <summary><see cref="Sphene.API.Data.Enum.ReactionTargetKind"/> as int.</summary>
@@ -18,7 +20,14 @@ public class CommunityReaction
     public string UserUID { get; set; } = string.Empty;
     public User? User { get; set; }
 
-    /// <summary><see cref="Sphene.API.Data.Enum.ReactionKind"/> as int.</summary>
+    /// <summary>The reacted emoji glyph (UTF-8, e.g. a chat-picker pick) -
+    /// the reaction's identity. Never empty post-migration.</summary>
+    [MaxLength(32)]
+    public string EmojiSeq { get; set; } = string.Empty;
+
+    /// <summary>Legacy <see cref="Sphene.API.Data.Enum.ReactionKind"/> as
+    /// int - frozen on migrated rows, reverse-mapped or -1 on new writes.
+    /// Kept for schema compat only; new reads key on <see cref="EmojiSeq"/>.</summary>
     public int Kind { get; set; }
 
     /// <summary>Denormalized shell scope - cascade + fast group-scoped reads.</summary>

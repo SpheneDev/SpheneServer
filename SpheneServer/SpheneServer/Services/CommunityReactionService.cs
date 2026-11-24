@@ -6,8 +6,8 @@ namespace SpheneServer.Services;
 
 /// <summary>
 /// State-based reaction writes - the contract is
-/// <c>SetReaction(kind, Set=true/false)</c>, never a toggle. The composite PK
-/// (target_kind, target_id, user_uid, kind) is the uniqueness authority:
+/// <c>SetReaction(emoji, Set=true/false)</c>, never a toggle. The composite PK
+/// (target_kind, target_id, user_uid, emoji_seq) is the uniqueness authority:
 ///
 ///   • Set   → INSERT … ON CONFLICT DO NOTHING - concurrent or repeated
 ///             calls can never duplicate or erase an existing reaction.
@@ -31,8 +31,11 @@ public static class CommunityReactionService
     /// (Set=false). Idempotent under concurrent and repeated requests.</summary>
     public static async Task<ReactionOutcome> ApplyAsync(
         SpheneDbContext db, int targetKind, long targetId, string uid,
-        int kind, bool set, string? groupGid, string? ownerUid, DateTime utcNow)
+        string emoji, bool set, string? groupGid, string? ownerUid, DateTime utcNow)
     {
+        // The frozen int column is write-through only: reverse-mapped when
+        // the emoji is one of the legacy canonical glyphs, -1 otherwise.
+        var legacyKind = Sphene.API.Data.Enum.ReactionEmojiMap.KindFor(emoji) is { } k ? (int)k : -1;
         if (db.Database.IsRelational())
         {
             if (set)
@@ -40,22 +43,22 @@ public static class CommunityReactionService
                 var inserted = await db.Database.ExecuteSqlRawAsync(
                     """
                     INSERT INTO community_reactions
-                        (target_kind, target_id, user_uid, kind, group_gid, owner_uid, created_at)
-                    VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6})
-                    ON CONFLICT (target_kind, target_id, user_uid, kind) DO NOTHING
-                    """, targetKind, targetId, uid, kind, groupGid, ownerUid, utcNow)
+                        (target_kind, target_id, user_uid, emoji_seq, kind, group_gid, owner_uid, created_at)
+                    VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7})
+                    ON CONFLICT (target_kind, target_id, user_uid, emoji_seq) DO NOTHING
+                    """, targetKind, targetId, uid, emoji, legacyKind, groupGid, ownerUid, utcNow)
                     .ConfigureAwait(false);
                 return new(true, Inserted: inserted > 0);
             }
             var removed = await db.Database.ExecuteSqlRawAsync(
                 """
                 DELETE FROM community_reactions
-                WHERE target_kind = {0} AND target_id = {1} AND user_uid = {2} AND kind = {3}
-                """, targetKind, targetId, uid, kind).ConfigureAwait(false);
+                WHERE target_kind = {0} AND target_id = {1} AND user_uid = {2} AND emoji_seq = {3}
+                """, targetKind, targetId, uid, emoji).ConfigureAwait(false);
             return new(true, Removed: removed > 0);
         }
 
-        var existing = await db.CommunityReactions.FindAsync(targetKind, targetId, uid, kind)
+        var existing = await db.CommunityReactions.FindAsync(targetKind, targetId, uid, emoji)
             .ConfigureAwait(false);
         if (set)
         {
@@ -65,7 +68,8 @@ public static class CommunityReactionService
                 TargetKind = targetKind,
                 TargetId = targetId,
                 UserUID = uid,
-                Kind = kind,
+                EmojiSeq = emoji,
+                Kind = legacyKind,
                 GroupGID = groupGid,
                 OwnerUid = ownerUid,
                 CreatedAt = utcNow,
@@ -79,20 +83,43 @@ public static class CommunityReactionService
         return new(true, Removed: true);
     }
 
-    /// <summary>Aggregate counts per kind + the viewer's own kinds for one
-    /// target - GROUP BY read, no denormalized counters to drift.</summary>
-    public static async Task<(Dictionary<int, int> Counts, List<int> ViewerKinds, int Total)>
+    /// <summary>Aggregate counts per emoji + the viewer's own emojis for one
+    /// target - GROUP BY read, no denormalized counters to drift. The
+    /// int-keyed legacy maps aggregate reverse-mappable glyphs so pre-emoji
+    /// clients keep reading coherent counts.</summary>
+    public static async Task<(Dictionary<string, int> EmojiCounts, List<string> ViewerEmojis,
+        Dictionary<int, int> Counts, List<int> ViewerKinds, int Total)>
         SummaryAsync(SpheneDbContext db, int targetKind, long targetId, string viewerUid)
     {
         var grouped = await db.CommunityReactions
             .Where(r => r.TargetKind == targetKind && r.TargetId == targetId)
-            .GroupBy(r => r.Kind)
+            .GroupBy(r => r.EmojiSeq)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToListAsync().ConfigureAwait(false);
-        var viewer = await db.CommunityReactions
+        var viewerEmojis = await db.CommunityReactions
             .Where(r => r.TargetKind == targetKind && r.TargetId == targetId && r.UserUID == viewerUid)
-            .Select(r => r.Kind).ToListAsync().ConfigureAwait(false);
-        var counts = grouped.ToDictionary(g => g.Key, g => g.Count);
-        return (counts, viewer, grouped.Sum(g => g.Count));
+            .Select(r => r.EmojiSeq).ToListAsync().ConfigureAwait(false);
+        var emojiCounts = new Dictionary<string, int>(grouped.Count);
+        var counts = new Dictionary<int, int>();
+        var total = 0;
+        foreach (var g in grouped)
+        {
+            if (g.Key.Length > 0) emojiCounts[g.Key] = g.Count;
+            if (Sphene.API.Data.Enum.ReactionEmojiMap.KindFor(g.Key) is { } legacy)
+            {
+                counts[(int)legacy] = counts.GetValueOrDefault((int)legacy) + g.Count;
+            }
+            total += g.Count;
+        }
+        var viewerKinds = new List<int>();
+        foreach (var e in viewerEmojis)
+        {
+            if (Sphene.API.Data.Enum.ReactionEmojiMap.KindFor(e) is { } legacy
+                && !viewerKinds.Contains((int)legacy))
+            {
+                viewerKinds.Add((int)legacy);
+            }
+        }
+        return (emojiCounts, viewerEmojis, counts, viewerKinds, total);
     }
 }

@@ -118,6 +118,7 @@ public partial class SpheneHub
         var names = await ResolveFeedActorNamesAsync(page).ConfigureAwait(false);
         page = page.Select(i => i.ActorUid != null && names.TryGetValue(i.ActorUid, out var n)
             ? i with { ActorDisplayName = n } : i).ToList();
+        page = await FillFeedEngagementAsync(page).ConfigureAwait(false);
 
         var next = saturated && page.Count > 0 ? EncodeFeedCursor(page[^1]) : null;
         return new SyncshellCommunityFeedPageDto(page, next);
@@ -172,7 +173,7 @@ public partial class SpheneHub
             SyncshellFeedItemKind.Event, ev.Id, ev.Title, ev.Location, ev.StartUtc,
             Section: SyncshellCommunitySection.Events, ItemId: ev.Id,
             ThumbnailMediaHash: ev.PreviewMediaHash ?? ev.ImageMediaHash,
-            ActivityUtc: ev.CreatedAt);
+            ActivityUtc: ev.CreatedAt, FullMediaHash: ev.ImageMediaHash);
     }
 
     /// <summary>
@@ -246,6 +247,7 @@ public partial class SpheneHub
         var names = await ResolveFeedActorNamesAsync(page).ConfigureAwait(false);
         page = page.Select(i => i.ActorUid != null && names.TryGetValue(i.ActorUid, out var n)
             ? i with { ActorDisplayName = n } : i).ToList();
+        page = await FillFeedEngagementAsync(page).ConfigureAwait(false);
         var next = saturated && page.Count > 0 ? EncodeFeedCursor(page[^1]) : null;
         return new SyncshellCommunityFeedPageDto(page, next);
     }
@@ -272,7 +274,8 @@ public partial class SpheneHub
             b => b.CreatedAt, b => b.Id);
         var rows = await q.OrderByDescending(b => b.CreatedAt)
             .ThenByDescending(b => b.Id).Take(perSource)
-            .Select(b => new { b.Id, b.Title, b.Body, b.CreatedAt, b.CoverMediaHash })
+            .Select(b => new { b.Id, b.Title, b.Body, b.CreatedAt, b.CoverMediaHash,
+                b.CommentCount, b.ViewCount })
             .ToListAsync().ConfigureAwait(false);
         foreach (var b in rows)
         {
@@ -280,7 +283,8 @@ public partial class SpheneHub
                 string.Empty, null, null,
                 SyncshellFeedItemKind.Blog, b.Id, b.Title, Snip(b.Body), b.CreatedAt,
                 Section: null, ItemId: b.Id, ActorUid: targetUid,
-                ThumbnailMediaHash: b.CoverMediaHash, TargetOwnerUid: targetUid));
+                ThumbnailMediaHash: b.CoverMediaHash, TargetOwnerUid: targetUid,
+                CommentCount: b.CommentCount, ViewCount: b.ViewCount));
         }
     }
 
@@ -329,7 +333,7 @@ public partial class SpheneHub
                 SyncshellFeedItemKind.Event, e.Id, e.Title, null, e.CreatedAt,
                 Section: SyncshellCommunitySection.Events, ItemId: e.Id, ActorUid: targetUid,
                 ThumbnailMediaHash: e.PreviewMediaHash ?? e.ImageMediaHash,
-                ActivityUtc: e.CreatedAt));
+                ActivityUtc: e.CreatedAt, FullMediaHash: e.ImageMediaHash));
         }
     }
 
@@ -388,7 +392,7 @@ public partial class SpheneHub
                 gid, gid.Length > 0 ? aliases.GetValueOrDefault(gid) : null, null,
                 SyncshellFeedItemKind.Reaction, r.TargetId,
                 $"Reaction on {title ?? "a post"}",
-                ((ReactionKind)r.Kind).ToString(), r.CreatedAt,
+                r.EmojiSeq, r.CreatedAt,
                 Section: SectionOf(host.Kind), ItemId: host.Id, ActorUid: targetUid,
                 SubItemId: r.TargetKind == (int)ReactionTargetKind.Comment
                     ? r.TargetId : null,
@@ -480,7 +484,7 @@ public partial class SpheneHub
                 .ThenBy(x => x.r.TargetKind).ThenBy(x => x.r.TargetId).ThenBy(x => x.r.Kind)
                 .Take(batchTake)
                 .Select(x => new ProfileReactionRow(x.r.TargetKind, x.r.TargetId,
-                    x.r.GroupGID, x.r.OwnerUid, x.r.Kind, x.r.CreatedAt, x.EffId))
+                    x.r.GroupGID, x.r.OwnerUid, x.r.Kind, x.r.CreatedAt, x.EffId, x.r.EmojiSeq))
                 .ToListAsync().ConfigureAwait(false);
             if (batch.Count == 0) break;
             // Resolve comment targets to their host post - the ACL judges
@@ -514,7 +518,8 @@ public partial class SpheneHub
         string? GroupGID, string? OwnerUid, string? Body, DateTime CreatedAt);
 
     private sealed record ProfileReactionRow(int TargetKind, long TargetId,
-        string? GroupGID, string? OwnerUid, int Kind, DateTime CreatedAt, long EffId);
+        string? GroupGID, string? OwnerUid, int Kind, DateTime CreatedAt, long EffId,
+        string EmojiSeq = "");
 
     /// <summary>Hosts visible to the caller - the per-target ACL the review
     /// requires on every activity row: news/event must be published and live
@@ -675,7 +680,7 @@ public partial class SpheneHub
             .ThenBy(x => x.r.UserUID)
             .ThenBy(x => x.r.TargetKind).ThenBy(x => x.r.TargetId).ThenBy(x => x.r.Kind)
             .Take(perSource)
-            .Select(x => new { x.r.TargetKind, x.r.TargetId, x.r.GroupGID, x.r.OwnerUid, x.r.UserUID, x.r.Kind, x.r.CreatedAt })
+            .Select(x => new { x.r.TargetKind, x.r.TargetId, x.r.GroupGID, x.r.OwnerUid, x.r.UserUID, x.r.Kind, x.r.CreatedAt, x.r.EmojiSeq })
             .ToListAsync().ConfigureAwait(false);
         var titles = await ResolveFeedTargetTitlesAsync(rows.Select(r => (r.TargetKind, r.TargetId)))
             .ConfigureAwait(false);
@@ -695,7 +700,7 @@ public partial class SpheneHub
                 gid != null ? accents.GetValueOrDefault(gid) : null,
                 SyncshellFeedItemKind.Reaction, r.TargetId,
                 $"Reaction on {title ?? hostTitle ?? "your post"}",
-                ((ReactionKind)r.Kind).ToString(), r.CreatedAt,
+                r.EmojiSeq, r.CreatedAt,
                 Section: SectionOf(host.Kind),
                 ItemId: host.Id, ActorUid: r.UserUID,
                 // comment-target reactions keep the comment id as inner
@@ -816,7 +821,7 @@ public partial class SpheneHub
         var rows = await q.OrderByDescending(b => b.CreatedAt)
             .ThenByDescending(b => b.Id).Take(perSource)
             .Select(b => new { b.Id, b.UserUID, b.Title, b.Body,
-                b.CreatedAt, b.CoverMediaHash })
+                b.CreatedAt, b.CoverMediaHash, b.CommentCount, b.ViewCount })
             .ToListAsync().ConfigureAwait(false);
 
         foreach (var b in rows)
@@ -825,13 +830,94 @@ public partial class SpheneHub
                 string.Empty, null, null,
                 SyncshellFeedItemKind.Blog, b.Id, b.Title, Snip(b.Body), b.CreatedAt,
                 Section: null, ItemId: b.Id, ActorUid: b.UserUID,
-                ThumbnailMediaHash: b.CoverMediaHash, TargetOwnerUid: b.UserUID));
+                ThumbnailMediaHash: b.CoverMediaHash, TargetOwnerUid: b.UserUID,
+                CommentCount: b.CommentCount, ViewCount: b.ViewCount));
         }
     }
 
     // ------------------------------------------------------------------
     //  Cursor + helpers
     // ------------------------------------------------------------------
+
+    /// <summary>Stamps engagement counters onto the emitted page's content
+    /// rows - reactions for News/Event/Blog and comments for News/Event via
+    /// one grouped query per kind; blog comment totals come from the
+    /// denormalized post column the profile surfaces already show (and the
+    /// collectors stamp it). Activity/photo rows keep nulls, so the client
+    /// never renders a strip of zeros.</summary>
+    private async Task<List<SyncshellCommunityFeedItemDto>> FillFeedEngagementAsync(
+        List<SyncshellCommunityFeedItemDto> page)
+    {
+        // Feed kind → comment/reaction target kind (the two enums share
+        // ordinals for News/Event/Blog; Photo carries no thread).
+        static int TargetOf(SyncshellFeedItemKind kind) => kind switch
+        {
+            SyncshellFeedItemKind.News => (int)CommentTargetKind.News,
+            SyncshellFeedItemKind.Event => (int)CommentTargetKind.Event,
+            SyncshellFeedItemKind.Blog => (int)CommentTargetKind.Blog,
+            _ => -1,
+        };
+        var targetKinds = page.Select(i => TargetOf(i.Kind))
+            .Where(k => k >= 0).Distinct().ToList();
+        if (targetKinds.Count == 0) return page;
+
+        var reactions = new Dictionary<(int, long), int>();
+        var comments = new Dictionary<(int, long), int>();
+        var likedByMe = new HashSet<(int, long)>();
+        foreach (var tk in targetKinds)
+        {
+            var ids = page.Where(i => TargetOf(i.Kind) == tk)
+                .Select(i => i.ItemId ?? i.Id).ToList();
+            foreach (var g in await DbContext.CommunityReactions.AsNoTracking()
+                .Where(r => r.TargetKind == tk && ids.Contains(r.TargetId))
+                .GroupBy(r => r.TargetId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToListAsync().ConfigureAwait(false))
+            {
+                reactions[(tk, g.Key)] = g.Count;
+            }
+            // The caller's own thumbs-up rows drive the active state +
+            // toggle direction in the client's engagement strip. Toned
+            // thumbs carry the base glyph as their leading codepoints, so a
+            // prefix match counts them as likes too.
+            var thumbsUp = ReactionEmojiMap.ThumbsUp;
+            foreach (var id in await DbContext.CommunityReactions.AsNoTracking()
+                .Where(r => r.TargetKind == tk && ids.Contains(r.TargetId)
+                    && r.UserUID == UserUID
+                    && (r.Kind == (int)ReactionKind.Like || r.EmojiSeq.StartsWith(thumbsUp)))
+                .Select(r => r.TargetId).ToListAsync().ConfigureAwait(false))
+            {
+                likedByMe.Add((tk, id));
+            }
+            if (tk == (int)CommentTargetKind.Blog) continue;
+            var visible = (int)CommentState.Visible;
+            foreach (var g in await DbContext.CommunityComments.AsNoTracking()
+                .Where(c => c.TargetKind == tk && ids.Contains(c.TargetId)
+                    && c.State == visible)
+                .GroupBy(c => c.TargetId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToListAsync().ConfigureAwait(false))
+            {
+                comments[(tk, g.Key)] = g.Count;
+            }
+        }
+
+        return page.Select(i =>
+        {
+            var tk = TargetOf(i.Kind);
+            if (tk < 0) return i;
+            var id = i.ItemId ?? i.Id;
+            return i with
+            {
+                CommentCount = comments.TryGetValue((tk, id), out var cc)
+                    ? cc : i.CommentCount,
+                ReactionCount = reactions.TryGetValue((tk, id), out var rc)
+                    ? rc : i.ReactionCount,
+                LikedByMe = likedByMe.Contains((tk, id)),
+            };
+        }).ToList();
+    }
+
 
     /// <summary>Target titles for comment/reaction feed rows - one grouped
     /// lookup per host kind instead of N+1 loads.</summary>
