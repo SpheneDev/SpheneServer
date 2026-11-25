@@ -346,7 +346,16 @@ public partial class SpheneHub
             }
             else if (access.OwnerUid != null)
             {
-                await PushUserProfileChangedAsync(access.OwnerUid).ConfigureAwait(false);
+                // Fine-grained reaction push - the coarse profile invalidation
+                // made every viewer's page collapse into a reload for a count
+                // change. Clients patch thread summaries and feed rows in
+                // place; the host coordinates ride along even for
+                // comment-level reactions because the thread is keyed on the
+                // host, never the comment.
+                var pushKind = comment != null ? comment.TargetKind : kind;
+                var pushId = comment != null ? comment.TargetId : hostId;
+                await PushUserReactionChangedAsync(access.OwnerUid, pushKind,
+                    pushId, comment != null).ConfigureAwait(false);
             }
         }
         return await BuildReactionSummaryAsync(kind, hostId).ConfigureAwait(false);
@@ -859,6 +868,24 @@ public partial class SpheneHub
             r.ResolvedByUid != null ? byUid.GetValueOrDefault(r.ResolvedByUid) : null,
             r.ResolvedAt, r.ResolutionNote, r.CreatedAt,
             snippetById.GetValueOrDefault(r.TargetId))).ToList();
+    }
+
+    /// <summary>Pushes a fine-grained reaction change on profile-owned
+    /// content to the owner's online paired viewers and the owner's own
+    /// sessions - the same audience <see cref="PushUserProfileChangedAsync"/>
+    /// addresses, but the coordinates let clients patch counts in place
+    /// instead of dropping every cached profile surface.</summary>
+    private async Task PushUserReactionChangedAsync(string uid, int hostKind,
+        long hostId, bool commentLevel)
+    {
+        var paired = await GetAllPairedUnpausedUsers(uid).ConfigureAwait(false);
+        var online = await GetOnlineUsers(paired).ConfigureAwait(false);
+        var dto = new UserReactionChangedDto(new UserData(uid), hostKind, hostId, commentLevel);
+        if (online.Count > 0)
+        {
+            await Clients.Users(online.Keys.ToList()).Client_UserReactionChanged(dto).ConfigureAwait(false);
+        }
+        await Clients.User(uid).Client_UserReactionChanged(dto).ConfigureAwait(false);
     }
 
     /// <summary>Pushes a user-profile content refresh (blog posts, their

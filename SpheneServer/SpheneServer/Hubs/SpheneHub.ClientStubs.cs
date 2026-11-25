@@ -76,6 +76,8 @@ namespace SpheneServer.Hubs
         public Task Client_AnnouncementPublished(AnnouncementDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_AnnouncementsChanged() => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_CommunityChanged(CommunityChangedDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
+
+        public Task Client_UserReactionChanged(UserReactionChangedDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
         public Task Client_UserNotification(UserNotificationDto dto) => throw new PlatformNotSupportedException("Calling clientside method on server not supported");
     }
 }
